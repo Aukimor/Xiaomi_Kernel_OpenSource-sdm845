@@ -92,7 +92,7 @@ jobs:
           ls -la ${{ env.WORKSPACE }}/*.zip
 
       - name: "💙 Upload artifact"
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: polaris-KSU-Aukimor
           path: ${{ env.WORKSPACE }}/*.zip
