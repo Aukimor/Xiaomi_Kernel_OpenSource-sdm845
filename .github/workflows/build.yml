@@ -1,4 +1,100 @@
-$(cat << 'EOF'
-$content
-EOF
-)
+name: Build polaris (88-zstd + KSU)
+
+on:
+  workflow_dispatch:
+
+env:
+  OUT_DIR: "${{ github.workspace }}/out"
+  ANYKERNEL_NAME: AnyKernel3
+
+permissions:
+  contents: write
+
+jobs:
+  Build-Kernel:
+    name: "🐎 Build polaris kernel"
+    runs-on: ubuntu-22.04
+    env:
+      WORKSPACE: ${{ github.workspace }}
+      KERNEL_NAME: Xiaomi_Kernel_OpenSource-sdm845
+      KERNEL_REPO: https://github.com/Aukimor/Xiaomi_Kernel_OpenSource-sdm845
+      KERNEL_BRANCH: 88-zstd
+      KERNEL_DEVICE: polaris
+      DEFCONFIG_NAME: polaris_user_defconfig
+      ANYKERNEL_NAME: AnyKernel3
+    steps:
+      - name: "⭐ Install prerequisites"
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential bc curl git zip ftp gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi libssl-dev lftp zstd wget libfl-dev python2 python3 libarchive-tools
+
+      - name: "⏰ Setup Anykernel3"
+        run: |
+          git clone --recursive --depth=1 -j $(nproc) --branch master https://github.com/diyishengqing/AnyKernel3 ${{ env.ANYKERNEL_NAME }}
+          echo "🤔 AnyKernel3 ready"
+
+      - name: "🌟 Checkout kernel source"
+        run: |
+          git clone --recursive --depth=1 -j $(nproc) --branch $KERNEL_BRANCH $KERNEL_REPO $KERNEL_NAME
+          echo "🤔 Kernel source cloned"
+
+      - name: "💫 Get toolchains (clang13)"
+        run: |
+          git clone --recursive --depth=1 -j $(nproc) --branch clang13 https://github.com/diyishengqing/android-kernel-tools clang13
+          echo "$WORKSPACE/clang13/clang/host/linux-x86/clang-r428724/bin" >> $GITHUB_PATH
+          echo "$WORKSPACE/clang13/linaro-gcc-4.9/aarch64-linux-gnu/bin" >> $GITHUB_PATH
+          echo "$WORKSPACE/clang13/linaro-gcc-4.9/arm-linux-gnueabi/bin" >> $GITHUB_PATH
+          echo "🤔 Toolchains ready"
+
+      - name: "😎 Set args"
+        id: generate-args
+        env:
+          THREAD: $(nproc --all)
+        run: |
+          args="-j${{ env.THREAD }}"
+          if [ -n "${{ env.OUT_DIR }}" ]; then
+            mkdir -p ${{ env.OUT_DIR }} && args="$args O=${{ env.OUT_DIR }}"
+          fi
+          args="$args ARCH=arm64"
+          args="$args CC=${{ env.WORKSPACE }}/clang13/clang/host/linux-x86/clang-r428724/bin/clang"
+          args="$args CROSS_COMPILE=${{ env.WORKSPACE }}/clang13/linaro-gcc-4.9/aarch64-linux-gnu/bin/aarch64-linux-gnu-"
+          args="$args CROSS_COMPILE_ARM32=${{ env.WORKSPACE }}/clang13/linaro-gcc-4.9/arm-linux-gnueabi/bin/arm-linux-gnueabi-"
+          args="$args AR=${{ env.WORKSPACE }}/clang13/clang/host/linux-x86/clang-r428724/bin/llvm-ar"
+          args="$args NM=${{ env.WORKSPACE }}/clang13/clang/host/linux-x86/clang-r428724/bin/llvm-nm"
+          args="$args OBJCOPY=${{ env.WORKSPACE }}/clang13/clang/host/linux-x86/clang-r428724/bin/llvm-objcopy"
+          args="$args OBJDUMP=${{ env.WORKSPACE }}/clang13/clang/host/linux-x86/clang-r428724/bin/llvm-objdump"
+          args="$args READELF=${{ env.WORKSPACE }}/clang13/clang/host/linux-x86/clang-r428724/bin/llvm-readelf"
+          args="$args OBJSIZE=${{ env.WORKSPACE }}/clang13/clang/host/linux-x86/clang-r428724/bin/llvm-size"
+          args="$args STRIP=${{ env.WORKSPACE }}/clang13/clang/host/linux-x86/clang-r428724/bin/llvm-strip"
+          args="$args HOSTCC=${{ env.WORKSPACE }}/clang13/clang/host/linux-x86/clang-r428724/bin/clang"
+          args="$args HOSTCXX=${{ env.WORKSPACE }}/clang13/clang/host/linux-x86/clang-r428724/bin/clang++"
+          args="$args LLVM_AR=${{ env.WORKSPACE }}/clang13/clang/host/linux-x86/clang-r428724/bin/llvm-ar"
+          args="$args LLVM_DIS=${{ env.WORKSPACE }}/clang13/clang/host/linux-x86/clang-r428724/bin/llvm-dis"
+          echo "🤔 args: $args"
+          echo "args=$args" >> $GITHUB_OUTPUT
+
+      - name: "👍 Make defconfig"
+        working-directory: ${{ env.KERNEL_NAME }}
+        run: |
+          make ${{ steps.generate-args.outputs.args }} ${{ env.DEFCONFIG_NAME }}
+
+      - name: "🎶 Build kernel"
+        working-directory: ${{ env.KERNEL_NAME }}
+        run: |
+          make ${{ steps.generate-args.outputs.args }}
+
+      - name: "💛 Package AnyKernel3"
+        working-directory: ${{ env.ANYKERNEL_NAME }}
+        run: |
+          cp ${{ env.KERNEL_NAME }}/${{ env.OUT_DIR }}/arch/arm64/boot/Image.gz-dtb ./Image.gz-dtb
+          cd ${{ env.ANYKERNEL_NAME }}
+          zip -r -9 ${{ env.WORKSPACE }}/${{ env.KERNEL_DEVICE }}-KSu-Aukimor-${{ github.run_id }}.zip .
+          ls -la ${{ env.WORKSPACE }}/*.zip
+
+      - name: "💙 Upload artifact"
+        uses: actions/upload-artifact@v3
+        with:
+          name: polaris-KSU-Aukimor
+          path: ${{ env.WORKSPACE }}/*.zip
+          if-no-files-found: ignore
+          retention-days: 7
