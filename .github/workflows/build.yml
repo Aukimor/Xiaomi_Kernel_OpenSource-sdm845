@@ -76,6 +76,8 @@ jobs:
       - name: "👍 Make defconfig"
         working-directory: ${{ env.KERNEL_NAME }}
         run: |
+          make ${{ steps.generate-args.outputs.args }} polaris_stock_defconfig
+          cp out/.config arch/arm64/configs/polaris_runtime_config
           make ${{ steps.generate-args.outputs.args }} ${{ env.DEFCONFIG_NAME }}
 
       - name: "🎶 Build kernel"
