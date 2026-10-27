@@ -87,6 +87,9 @@ jobs:
         working-directory: ${{ env.ANYKERNEL_NAME }}
         run: |
           cp ${{ env.OUT_DIR }}/arch/arm64/boot/Image.gz-dtb ./Image.gz-dtb
+          # Fix SELinux: change permissive to enforcing (was set by EW kernel)
+          sed -i '/write_boot/i\npatch_cmdline "androidboot.selinux" "androidboot.selinux=enforcing";' anykernel.sh
+          grep -n "patch_cmdline" anykernel.sh || true
           zip -r -9 ${{ env.WORKSPACE }}/${{ env.KERNEL_DEVICE }}-KSu-Aukimor-${{ github.run_id }}.zip .
           ls -la ${{ env.WORKSPACE }}/*.zip
 
