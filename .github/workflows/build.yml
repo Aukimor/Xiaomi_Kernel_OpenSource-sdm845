@@ -87,7 +87,6 @@ jobs:
         working-directory: ${{ env.ANYKERNEL_NAME }}
         run: |
           cp ${{ env.OUT_DIR }}/arch/arm64/boot/Image.gz-dtb ./Image.gz-dtb
-          cd ${{ env.ANYKERNEL_NAME }}
           zip -r -9 ${{ env.WORKSPACE }}/${{ env.KERNEL_DEVICE }}-KSu-Aukimor-${{ github.run_id }}.zip .
           ls -la ${{ env.WORKSPACE }}/*.zip
 
