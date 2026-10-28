@@ -91,17 +91,24 @@ jobs:
             RESOLVED=1
             for f in $CONFLICT_FILES; do
               case "$f" in
-                Makefile|net/ipv6/ip6_tunnel.c|include/linux/siphash.h)
+                Makefile|net/ipv6/ip6_tunnel.c|include/linux/siphash.h|drivers/usb/gadget/composite.c)
                   # 保留双方内容(删除冲突标记行) - 双方各加不同代码行
                   sed -i '/^<<<<<<</d; /^=======$/d; /^>>>>>>>/d' "$f"
                   git add "$f"
                   echo "  → $f 手动合并(保留双方)"
                   ;;
-                sound/core/compress_offload.c)
-                  # 上游 switch 状态检查重构是 bug 修复, caf 侧为老 if
+                sound/core/compress_offload.c|sound/usb/mixer.c)
+                  # 上游修复(状态机/USB音频), 通用框架代码非 CAF 定制
                   git checkout --theirs "$f" 2>/dev/null || true
                   git add "$f" 2>/dev/null || true
-                  echo "  → $f 采用上游(状态检查修复)"
+                  echo "  → $f 采用上游(修复)"
+                  ;;
+                fs/userfaultfd.c)
+                  # CAF vm_write_begin 并发模型与上游 still_valid 修复交错复杂,
+                  # 保守保留 CAF(后续可单独 backport still_valid)
+                  git checkout --ours "$f" 2>/dev/null || true
+                  git add "$f" 2>/dev/null || true
+                  echo "  → $f 保留 CAF 版(并发模型,保守)"
                   ;;
                 drivers/tty/serial/msm_serial.c)
                   # CAF 的 TX reset 增强保留
