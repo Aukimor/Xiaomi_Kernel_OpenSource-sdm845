@@ -1,0 +1,122 @@
+name: Upgrade kernel (linux-stable merge)
+
+on:
+  workflow_dispatch:
+    inputs:
+      start:
+        description: '起始小版本 (如 187)'
+        required: true
+        default: '187'
+      end:
+        description: '结束小版本 (如 187 为只验证一个; 337 为全量)'
+        required: true
+        default: '187'
+
+env:
+  OUT_DIR: "${{ github.workspace }}/out"
+
+jobs:
+  upgrade:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: "⭐ Set up job"
+        run: echo "kernel upgrade stage"
+
+      - name: "🌟 Checkout kernel source (full history)"
+        uses: actions/checkout@v4
+        with:
+          ref: '88-zstd'
+          fetch-depth: 0
+
+      - name: "🐍 Install prerequisites"
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y build-essential bc curl git zip gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi libssl-dev wget libfl-dev python3
+
+      - name: "🔧 Configure git"
+        run: |
+          git config --global user.name "Aukimor"
+          git config --global user.email "1041854814@qq.com"
+          git config --global merge.conflictStyle merge
+
+      - name: "📡 Fetch linux-stable (linux-4.9.y)"
+        run: |
+          git remote add stable https://kernel.googlesource.com/pub/scm/linux/kernel/git/stable/linux-stable.git
+          git fetch --progress stable linux-4.9.y --tags 2>&1 | tail -5
+          echo "=== 可用的 v4.9.x tags ==="
+          git tag -l 'v4.9.*' | tail -20
+
+      - name: "🔍 Risk screen: risky subsystem commits in range"
+        run: |
+          RANGE="v4.9.${{ inputs.start }}..v4.9.${{ inputs.end }}"
+          mkdir -p risk-audit
+          {
+            echo "=== 风险子系统提交清单 ($RANGE) ==="
+            for path in drivers/scsi/ufs drivers/remoteproc drivers/iommu \
+                        arch/arm64/boot/dts/qcom sound/soc/qcom \
+                        drivers/misc/fastrpc.c kernel/sched/cpufreq.c; do
+              echo ""
+              echo "===== $path ====="
+              git log --oneline "$RANGE" -- "$path" 2>/dev/null | head -30
+            done
+          } > risk-audit/risky-commits.txt
+          cat risk-audit/risky-commits.txt | head -60
+
+      - name: "🔀 Merge linux-stable tags"
+        id: merge
+        run: |
+          git checkout -b upgrade-work
+          START=${{ inputs.start }}
+          END=${{ inputs.end }}
+          CONFLICT_LOG="$GITHUB_WORKSPACE/risk-audit/conflicts.txt"
+          : > "$CONFLICT_LOG"
+          OK=0
+          FAIL=0
+          for i in $(seq "$START" "$END"); do
+            TAG="v4.9.$i"
+            echo "================ $TAG ================"
+            if git merge "$TAG" --no-edit 2>&1 | tee /tmp/merge.log; then
+              echo "✅ $TAG merged"
+              OK=$((OK+1))
+            else
+              FAIL=$((FAIL+1))
+              echo "❌ $TAG CONFLICTS:"
+              git diff --name-only --diff-filter=U | tee -a "$CONFLICT_LOG"
+              {
+                echo ""
+                echo "### $TAG 冲突详情:"
+                git diff --diff-filter=U | head -100
+              } >> "$CONFLICT_LOG"
+              # 阶段 0: 只 abort 记录, 不自动解决
+              git merge --abort
+              echo "::warning::$TAG 有冲突(已记录,未解决)"
+              if [ "$END" = "$START" ]; then
+                # 单版本验证模式: 有冲突就停, 看清单
+                break
+              fi
+            fi
+          done
+          echo "merged_ok=$OK" >> "$GITHUB_OUTPUT"
+          echo "merged_fail=$FAIL" >> "$GITHUB_OUTPUT"
+          echo ""
+          echo "=== 统计: 成功 $OK, 冲突 $FAIL ==="
+
+      - name: "📊 Check merge base (阶段 0 验证)"
+        if: ${{ inputs.start == inputs.end }}
+        run: |
+          echo "=== 我们 HEAD 与 v4.9.${{ inputs.start }} 的 merge base ==="
+          git merge-base HEAD "v4.9.${{ inputs.start }}" | head -1
+          MB=$(git merge-base HEAD "v4.9.${{ inputs.start }}" 2>/dev/null)
+          if [ -n "$MB" ]; then
+            echo "merge base commit:"
+            git log -1 --oneline "$MB"
+          else
+            echo "⚠️ 无 merge base (unrelated histories)"
+          fi
+
+      - name: "📁 Upload risk audit"
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: upgrade-audit-${{ inputs.start }}-${{ inputs.end }}
+          path: risk-audit/
