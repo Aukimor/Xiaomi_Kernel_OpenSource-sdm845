@@ -188,6 +188,31 @@ jobs:
           name: upgrade-audit-${{ inputs.start }}-${{ inputs.end }}
           path: risk-audit/
 
+      - name: "🔨 Build kernel (compile validation)"
+        if: ${{ steps.merge.outputs.merge_fail == '0' }}
+        run: |
+          set -e
+          # 下载 clang13 工具链
+          git clone --depth=1 --branch clang13 https://github.com/diyishengqing/android-kernel-tools clang13
+          TC=$PWD/clang13
+          # 生成 defconfig
+          make O=out ARCH=arm64 \
+            CC=$TC/clang/host/linux-x86/clang-r428724/bin/clang \
+            CROSS_COMPILE=$TC/linaro-gcc-4.9/aarch64-linux-gnu/bin/aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=$TC/linaro-gcc-4.9/arm-linux-gnueabi/bin/arm-linux-gnueabi- \
+            HOSTCC=$TC/clang/host/linux-x86/clang-r428724/bin/clang \
+            HOSTCFLAGS="-fcommon -O2" \
+            polaris_user_defconfig
+          # 编译内核(仅验证编译,不打包)
+          make O=out ARCH=arm64 -j"$(nproc)" \
+            CC=$TC/clang/host/linux-x86/clang-r428724/bin/clang \
+            CROSS_COMPILE=$TC/linaro-gcc-4.9/aarch64-linux-gnu/bin/aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=$TC/linaro-gcc-4.9/arm-linux-gnueabi/bin/arm-linux-gnueabi- \
+            HOSTCC=$TC/clang/host/linux-x86/clang-r428724/bin/clang \
+            HOSTCFLAGS="-fcommon -O2" 2>&1 | tee build.log
+          # 检查产物
+          ls -lh out/arch/arm64/boot/Image.gz-dtb 2>/dev/null && echo "✅ 编译成功" || { echo "❌ 编译失败"; exit 1; }
+
       - name: "🚀 Push to upgrade branch"
         if: ${{ inputs.push_branch != '' && steps.merge.outputs.merge_fail == '0' }}
         run: |
