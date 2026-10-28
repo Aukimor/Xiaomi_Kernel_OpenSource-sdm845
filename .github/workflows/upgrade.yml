@@ -116,7 +116,13 @@ jobs:
                   git add "$f"
                   echo "  → msm_serial.c 保留 CAF 版"
                   ;;
-                drivers/android/*)
+                kernel/sched/core.c)
+                  # CAF 的 cpu_isolated_mask 处理是平台特性,上游简化版丢失
+                  git checkout --ours "$f" 2>/dev/null || git checkout --ours -- "$f"
+                  git add "$f"
+                  echo "  → core.c 保留 CAF(含 isolated CPU 处理)"
+                  ;;
+                kernel/sched/*|drivers/android/*)
                   # CAF binder 是 Google lockless 重构,比上游 stable 新,
                   # 换上游老版本 binder 会破坏 Android 用户空间
                   git checkout --ours "$f" 2>/dev/null || true
