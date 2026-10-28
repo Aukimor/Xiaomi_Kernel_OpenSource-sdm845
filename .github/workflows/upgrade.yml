@@ -65,6 +65,7 @@ jobs:
       - name: "🔀 Merge linux-stable tags"
         id: merge
         run: |
+          set -o pipefail
           git checkout -b upgrade-work
           START=${{ inputs.start }}
           END=${{ inputs.end }}
@@ -75,10 +76,12 @@ jobs:
           for i in $(seq "$START" "$END"); do
             TAG="v4.9.$i"
             echo "================ $TAG ================"
-            if git merge "$TAG" --no-edit 2>&1 | tee /tmp/merge.log; then
+            if git merge "$TAG" --no-edit > /tmp/merge.log 2>&1; then
+              cat /tmp/merge.log
               echo "✅ $TAG merged"
               OK=$((OK+1))
             else
+              cat /tmp/merge.log
               FAIL=$((FAIL+1))
               echo "❌ $TAG CONFLICTS:"
               git diff --name-only --diff-filter=U | tee -a "$CONFLICT_LOG"
