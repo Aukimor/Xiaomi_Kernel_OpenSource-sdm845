@@ -116,7 +116,7 @@ jobs:
                   git add "$f"
                   echo "  → msm_serial.c 保留 CAF 版"
                   ;;
-                kernel/sched/core.c|fs/f2fs/*|drivers/pinctrl/qcom/*|drivers/thermal/thermal_core.c|drivers/tty/n_tty.c|drivers/usb/dwc3/*|drivers/input/touchscreen/atmel_mxt_ts.c|drivers/gpu/drm/drm_property.c|kernel/locking/spinlock_debug.c|arch/arm64/mm/mmu.c|net/wireless/util.c|drivers/md/dm.c|fs/ext4/ext4.h|net/netfilter/xt_bpf.c|drivers/gpu/drm/msm/*|drivers/usb/gadget/function/f_fs.c|drivers/char/random.c|drivers/clk/qcom/*|include/uapi/linux/coresight-stm.h)
+                kernel/sched/core.c|fs/f2fs/*|drivers/pinctrl/qcom/*|drivers/thermal/thermal_core.c|drivers/tty/n_tty.c|drivers/usb/dwc3/*|drivers/input/touchscreen/atmel_mxt_ts.c|drivers/gpu/drm/drm_property.c|kernel/locking/spinlock_debug.c|arch/arm64/mm/mmu.c|net/wireless/util.c|drivers/md/dm.c|fs/ext4/ext4.h|net/netfilter/xt_bpf.c|drivers/gpu/drm/msm/*|drivers/usb/gadget/function/f_fs.c|drivers/char/random.c|drivers/clk/qcom/*|include/uapi/linux/coresight-stm.h|drivers/scsi/ufs/*|drivers/of/base.c)
                   # CAF 的 cpu_isolated_mask 处理是平台特性,上游简化版丢失
                   git checkout --ours "$f" 2>/dev/null || git checkout --ours -- "$f"
                   git add "$f"
