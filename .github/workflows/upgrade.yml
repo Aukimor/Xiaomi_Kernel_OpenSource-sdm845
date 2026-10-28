@@ -8,19 +8,26 @@ on:
         required: true
         default: '187'
       end:
-        description: '结束小版本 (如 187 为只验证一个; 337 为全量)'
+        description: '结束小版本 (如 250)'
         required: true
-        default: '187'
+        default: '250'
+      push_branch:
+        description: '完成后 push 到哪个分支 (空=不 push)'
+        required: false
+        default: '88-zstd-upgrade'
 
 env:
   OUT_DIR: "${{ github.workspace }}/out"
+
+permissions:
+  contents: write
 
 jobs:
   upgrade:
     runs-on: ubuntu-22.04
     steps:
       - name: "⭐ Set up job"
-        run: echo "kernel upgrade stage"
+        run: echo "kernel upgrade"
 
       - name: "🌟 Checkout kernel source (full history)"
         uses: actions/checkout@v4
@@ -37,14 +44,13 @@ jobs:
         run: |
           git config --global user.name "Aukimor"
           git config --global user.email "1041854814@qq.com"
-          git config --global merge.conflictStyle merge
 
       - name: "📡 Fetch linux-stable (linux-4.9.y)"
         run: |
           git remote add stable https://kernel.googlesource.com/pub/scm/linux/kernel/git/stable/linux-stable.git
-          git fetch --progress stable linux-4.9.y --tags 2>&1 | tail -5
-          echo "=== 可用的 v4.9.x tags ==="
-          git tag -l 'v4.9.*' | tail -20
+          git fetch --progress stable linux-4.9.y --tags 2>&1 | tail -3
+          echo "=== 最新 v4.9.x tag ==="
+          git tag -l 'v4.9.*' | tail -5
 
       - name: "🔍 Risk screen: risky subsystem commits in range"
         run: |
@@ -54,15 +60,15 @@ jobs:
             echo "=== 风险子系统提交清单 ($RANGE) ==="
             for path in drivers/scsi/ufs drivers/remoteproc drivers/iommu \
                         arch/arm64/boot/dts/qcom sound/soc/qcom \
-                        drivers/misc/fastrpc.c kernel/sched/cpufreq.c; do
+                        drivers/tty/serial/msm_serial.c; do
               echo ""
               echo "===== $path ====="
-              git log --oneline "$RANGE" -- "$path" 2>/dev/null | head -30
+              git log --oneline "$RANGE" -- "$path" 2>/dev/null | head -20
             done
           } > risk-audit/risky-commits.txt
-          cat risk-audit/risky-commits.txt | head -60
+          head -30 risk-audit/risky-commits.txt
 
-      - name: "🔀 Merge linux-stable tags"
+      - name: "🔀 Merge linux-stable tags (auto-resolve known conflicts)"
         id: merge
         run: |
           set -o pipefail
@@ -75,47 +81,85 @@ jobs:
           FAIL=0
           for i in $(seq "$START" "$END"); do
             TAG="v4.9.$i"
-            echo "================ $TAG ================"
             if git merge "$TAG" --no-edit > /tmp/merge.log 2>&1; then
-              cat /tmp/merge.log
-              echo "✅ $TAG merged"
+              echo "✅ $TAG"
               OK=$((OK+1))
-            else
-              cat /tmp/merge.log
-              FAIL=$((FAIL+1))
-              echo "❌ $TAG CONFLICTS:"
-              git diff --name-only --diff-filter=U | tee -a "$CONFLICT_LOG"
-              {
-                echo ""
-                echo "### $TAG 冲突详情:"
-                git diff --diff-filter=U | head -100
-              } >> "$CONFLICT_LOG"
-              # 阶段 0: 只 abort 记录, 不自动解决
-              git merge --abort
-              echo "::warning::$TAG 有冲突(已记录,未解决)"
-              if [ "$END" = "$START" ]; then
-                # 单版本验证模式: 有冲突就停, 看清单
+              continue
+            fi
+            # 有冲突: 看是哪些文件
+            CONFLICT_FILES=$(git diff --name-only --diff-filter=U)
+            echo "⚠️ $TAG 冲突: $CONFLICT_FILES"
+            RESOLVED=1
+            for f in $CONFLICT_FILES; do
+              case "$f" in
+                Makefile)
+                  # 保留双方内容(删除冲突标记行)
+                  sed -i '/^<<<<<<</d; /^=======$/d; /^>>>>>>>/d' "$f"
+                  git add "$f"
+                  echo "  → Makefile 手动合并(保留双方)"
+                  ;;
+                drivers/tty/serial/msm_serial.c)
+                  # CAF 的 TX reset 增强保留
+                  git checkout --ours "$f" 2>/dev/null || git checkout --theirs "$f"
+                  git add "$f"
+                  echo "  → msm_serial.c 保留 CAF 版"
+                  ;;
+                arch/arm64/configs/*|kernel/Makefile|drivers/cpufreq/Kconfig|block/Kconfig.iosched)
+                  # 我们的移植/补丁文件保留 ours
+                  git checkout --ours "$f" 2>/dev/null || true
+                  git add "$f" 2>/dev/null || true
+                  echo "  → $f 保留 ours(移植补丁)"
+                  ;;
+                *)
+                  # 未知冲突文件: 记录, 不自动解决
+                  echo "  ❓ 未知冲突: $f" | tee -a "$CONFLICT_LOG"
+                  RESOLVED=0
+                  ;;
+              esac
+            done
+            if [ "$RESOLVED" = "1" ]; then
+              if git commit --no-edit > /dev/null 2>&1; then
+                echo "✅ $TAG (冲突已自动解决)"
+                OK=$((OK+1))
+              else
+                echo "❌ $TAG commit 失败" | tee -a "$CONFLICT_LOG"
+                git merge --abort
+                FAIL=$((FAIL+1))
                 break
               fi
+            else
+              {
+                echo "### $TAG 未知冲突详情:"
+                git diff --diff-filter=U | head -80
+              } >> "$CONFLICT_LOG"
+              git merge --abort
+              FAIL=$((FAIL+1))
+              echo "⏹️ 遇到未知冲突, 停止"
+              break
             fi
           done
-          echo "merged_ok=$OK" >> "$GITHUB_OUTPUT"
-          echo "merged_fail=$FAIL" >> "$GITHUB_OUTPUT"
           echo ""
-          echo "=== 统计: 成功 $OK, 冲突 $FAIL ==="
+          echo "=== 统计: 成功 $OK, 失败 $FAIL ==="
+          echo "last_version=$i" >> "$GITHUB_OUTPUT"
+          echo "merge_ok=$OK" >> "$GITHUB_OUTPUT"
+          echo "merge_fail=$FAIL" >> "$GITHUB_OUTPUT"
+          git log --oneline -3
 
-      - name: "📊 Check merge base (阶段 0 验证)"
-        if: ${{ inputs.start == inputs.end }}
+      - name: "📊 Verification info"
+        if: always()
         run: |
-          echo "=== 我们 HEAD 与 v4.9.${{ inputs.start }} 的 merge base ==="
-          git merge-base HEAD "v4.9.${{ inputs.start }}" | head -1
-          MB=$(git merge-base HEAD "v4.9.${{ inputs.start }}" 2>/dev/null)
-          if [ -n "$MB" ]; then
-            echo "merge base commit:"
-            git log -1 --oneline "$MB"
-          else
-            echo "⚠️ 无 merge base (unrelated histories)"
-          fi
+          {
+            echo "=== 升级结果 ==="
+            echo "成功: ${{ steps.merge.outputs.merge_ok }}"
+            echo "失败: ${{ steps.merge.outputs.merge_fail }}"
+            echo "最后处理: v4.9.${{ steps.merge.outputs.last_version }}"
+            echo ""
+            echo "=== 当前内核版本 ==="
+            head -5 Makefile | grep -E "VERSION|PATCHLEVEL|SUBLEVEL|EXTRAVERSION"
+            echo ""
+            echo "=== 关键文件状态 ==="
+            git status --short | head -10
+          } | tee risk-audit/result.txt
 
       - name: "📁 Upload risk audit"
         if: always()
@@ -123,3 +167,9 @@ jobs:
         with:
           name: upgrade-audit-${{ inputs.start }}-${{ inputs.end }}
           path: risk-audit/
+
+      - name: "🚀 Push to upgrade branch"
+        if: ${{ inputs.push_branch != '' && steps.merge.outputs.merge_fail == '0' }}
+        run: |
+          git push "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/Aukimor/Xiaomi_Kernel_OpenSource-sdm845.git" upgrade-work:${{ inputs.push_branch }} --force
+          echo "✅ 已 push 到 ${{ inputs.push_branch }}"
