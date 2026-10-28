@@ -91,13 +91,13 @@ jobs:
             RESOLVED=1
             for f in $CONFLICT_FILES; do
               case "$f" in
-                Makefile|net/ipv6/ip6_tunnel.c|include/linux/siphash.h|drivers/usb/gadget/composite.c)
+                Makefile|net/ipv6/ip6_tunnel.c|include/linux/siphash.h|drivers/usb/gadget/composite.c|drivers/nvmem/core.c)
                   # 保留双方内容(删除冲突标记行) - 双方各加不同代码行
                   sed -i '/^<<<<<<</d; /^=======$/d; /^>>>>>>>/d' "$f"
                   git add "$f"
                   echo "  → $f 手动合并(保留双方)"
                   ;;
-                sound/core/compress_offload.c|sound/usb/mixer.c)
+                sound/core/compress_offload.c|sound/usb/mixer.c|arch/arm/mm/init.c)
                   # 上游修复(状态机/USB音频), 通用框架代码非 CAF 定制
                   git checkout --theirs "$f" 2>/dev/null || true
                   git add "$f" 2>/dev/null || true
