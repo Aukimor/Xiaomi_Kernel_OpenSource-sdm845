@@ -116,7 +116,7 @@ jobs:
                   git add "$f"
                   echo "  → msm_serial.c 保留 CAF 版"
                   ;;
-                kernel/sched/core.c|fs/f2fs/recovery.c)
+                kernel/sched/core.c|fs/f2fs/*|drivers/pinctrl/qcom/*)
                   # CAF 的 cpu_isolated_mask 处理是平台特性,上游简化版丢失
                   git checkout --ours "$f" 2>/dev/null || git checkout --ours -- "$f"
                   git add "$f"
@@ -153,7 +153,7 @@ jobs:
                 break
               fi
             else
-              DETAILS=$(git diff --diff-filter=U 2>/dev/null | head -80)
+              DETAILS=$(git diff --diff-filter=U 2>/dev/null)
               {
                 echo "### $TAG 未知冲突详情:"
                 echo "$DETAILS"
