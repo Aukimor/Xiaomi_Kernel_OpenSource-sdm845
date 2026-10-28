@@ -91,7 +91,7 @@ jobs:
             RESOLVED=1
             for f in $CONFLICT_FILES; do
               case "$f" in
-                Makefile|net/ipv6/ip6_tunnel.c|include/linux/siphash.h|drivers/usb/gadget/composite.c|drivers/nvmem/core.c|drivers/block/loop.c|kernel/cpu.c|drivers/hid/hid-core.c)
+                Makefile|net/ipv6/ip6_tunnel.c|include/linux/siphash.h|drivers/usb/gadget/composite.c|drivers/nvmem/core.c|drivers/block/loop.c|kernel/cpu.c|drivers/hid/hid-core.c|drivers/of/Kconfig)
                   # 保留双方内容(删除冲突标记行) - 双方各加不同代码行
                   sed -i '/^<<<<<<</d; /^=======$/d; /^>>>>>>>/d' "$f"
                   git add "$f"
@@ -116,7 +116,7 @@ jobs:
                   git add "$f"
                   echo "  → msm_serial.c 保留 CAF 版"
                   ;;
-                kernel/sched/core.c|fs/f2fs/*|drivers/pinctrl/qcom/*|drivers/thermal/thermal_core.c|drivers/tty/n_tty.c|drivers/usb/dwc3/*|drivers/input/touchscreen/atmel_mxt_ts.c|drivers/gpu/drm/drm_property.c|kernel/locking/spinlock_debug.c|arch/arm64/mm/mmu.c|net/wireless/util.c)
+                kernel/sched/core.c|fs/f2fs/*|drivers/pinctrl/qcom/*|drivers/thermal/thermal_core.c|drivers/tty/n_tty.c|drivers/usb/dwc3/*|drivers/input/touchscreen/atmel_mxt_ts.c|drivers/gpu/drm/drm_property.c|kernel/locking/spinlock_debug.c|arch/arm64/mm/mmu.c|net/wireless/util.c|drivers/md/dm.c)
                   # CAF 的 cpu_isolated_mask 处理是平台特性,上游简化版丢失
                   git checkout --ours "$f" 2>/dev/null || git checkout --ours -- "$f"
                   git add "$f"
