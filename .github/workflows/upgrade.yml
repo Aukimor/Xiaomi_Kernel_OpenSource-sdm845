@@ -97,7 +97,7 @@ jobs:
                   git add "$f"
                   echo "  → $f 手动合并(保留双方)"
                   ;;
-                sound/core/compress_offload.c|sound/usb/mixer.c|arch/arm/mm/init.c|drivers/usb/gadget/configfs.c|drivers/usb/gadget/udc/core.c|drivers/usb/host/xhci.c|scripts/mod/modpost.c|arch/arm64/kernel/psci.c|kernel/time/hrtimer.c)
+                sound/core/compress_offload.c|sound/usb/mixer.c|arch/arm/mm/init.c|drivers/usb/gadget/configfs.c|drivers/usb/gadget/udc/core.c|drivers/usb/host/xhci.c|scripts/mod/modpost.c|arch/arm64/kernel/psci.c|kernel/time/hrtimer.c|drivers/usb/host/xhci-mem.c)
                   # 上游修复(状态机/USB音频), 通用框架代码非 CAF 定制
                   git checkout --theirs "$f" 2>/dev/null || true
                   git add "$f" 2>/dev/null || true
@@ -116,7 +116,7 @@ jobs:
                   git add "$f"
                   echo "  → msm_serial.c 保留 CAF 版"
                   ;;
-                kernel/sched/core.c|fs/f2fs/*|drivers/pinctrl/qcom/*|drivers/thermal/thermal_core.c|drivers/tty/n_tty.c|drivers/usb/dwc3/*|drivers/input/touchscreen/atmel_mxt_ts.c|drivers/gpu/drm/drm_property.c|kernel/locking/spinlock_debug.c|arch/arm64/mm/mmu.c|net/wireless/util.c|drivers/md/dm.c)
+                kernel/sched/core.c|fs/f2fs/*|drivers/pinctrl/qcom/*|drivers/thermal/thermal_core.c|drivers/tty/n_tty.c|drivers/usb/dwc3/*|drivers/input/touchscreen/atmel_mxt_ts.c|drivers/gpu/drm/drm_property.c|kernel/locking/spinlock_debug.c|arch/arm64/mm/mmu.c|net/wireless/util.c|drivers/md/dm.c|fs/ext4/ext4.h|net/netfilter/xt_bpf.c)
                   # CAF 的 cpu_isolated_mask 处理是平台特性,上游简化版丢失
                   git checkout --ours "$f" 2>/dev/null || git checkout --ours -- "$f"
                   git add "$f"
