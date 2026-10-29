@@ -69,7 +69,8 @@ jobs:
           git tag -l 'v4.9.*' | tail -5
 
       - name: "🔍 Risk screen: risky subsystem commits in range"
-        run: |          RANGE="v4.9.${{ inputs.start }}..v4.9.${{ inputs.end }}"
+        run: |
+          RANGE="v4.9.${{ inputs.start }}..v4.9.${{ inputs.end }}"
           mkdir -p risk-audit
           {
             echo "=== 风险子系统提交清单 ($RANGE) ==="
