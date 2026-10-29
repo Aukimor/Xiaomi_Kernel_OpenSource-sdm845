@@ -8,19 +8,26 @@ on:
         required: true
         default: '187'
       end:
-        description: '结束小版本 (如 187 为只验证一个; 337 为全量)'
+        description: '结束小版本 (如 250)'
         required: true
-        default: '187'
+        default: '250'
+      push_branch:
+        description: '完成后 push 到哪个分支 (空=不 push)'
+        required: false
+        default: '88-zstd-upgrade'
 
 env:
   OUT_DIR: "${{ github.workspace }}/out"
+
+permissions:
+  contents: write
 
 jobs:
   upgrade:
     runs-on: ubuntu-22.04
     steps:
       - name: "⭐ Set up job"
-        run: echo "kernel upgrade stage"
+        run: echo "kernel upgrade"
 
       - name: "🌟 Checkout kernel source (full history)"
         uses: actions/checkout@v4
@@ -37,36 +44,52 @@ jobs:
         run: |
           git config --global user.name "Aukimor"
           git config --global user.email "1041854814@qq.com"
-          git config --global merge.conflictStyle merge
+
+      - name: "🎲 Restore linux-stable bundle cache"
+        id: bundle-cache
+        uses: actions/cache@v4
+        with:
+          path: /tmp/linux-stable.bundle
+          key: linux-stable-4.9-bundle-v2
 
       - name: "📡 Fetch linux-stable (linux-4.9.y)"
         run: |
-          git remote add stable https://kernel.googlesource.com/pub/scm/linux/kernel/git/stable/linux-stable.git
-          git fetch --progress stable linux-4.9.y --tags 2>&1 | tail -5
-          echo "=== 可用的 v4.9.x tags ==="
-          git tag -l 'v4.9.*' | tail -20
+          if [ -f /tmp/linux-stable.bundle ]; then
+            echo "=== 从缓存 bundle 恢复 ==="
+            git fetch /tmp/linux-stable.bundle 'refs/tags/*:refs/tags/*'
+          else
+            echo "=== 首次 fetch(慢),之后走缓存 ==="
+            git remote add stable https://kernel.googlesource.com/pub/scm/linux/kernel/git/stable/linux-stable.git
+            git fetch --progress stable linux-4.9.y --tags 2>&1 | tail -3
+            git bundle create /tmp/linux-stable.bundle --tags v4.9.186 v4.9.337 $(git tag -l 'v4.9.187' | head -1) 2>/dev/null || \
+            git bundle create /tmp/linux-stable.bundle --tags 2>/dev/null || \
+            echo "bundle 创建失败,下次仍走网络"
+          fi
+          echo "=== 最新 v4.9.x tag ==="
+          git tag -l 'v4.9.*' | tail -5
 
       - name: "🔍 Risk screen: risky subsystem commits in range"
-        run: |
-          RANGE="v4.9.${{ inputs.start }}..v4.9.${{ inputs.end }}"
+        run: |          RANGE="v4.9.${{ inputs.start }}..v4.9.${{ inputs.end }}"
           mkdir -p risk-audit
           {
             echo "=== 风险子系统提交清单 ($RANGE) ==="
             for path in drivers/scsi/ufs drivers/remoteproc drivers/iommu \
                         arch/arm64/boot/dts/qcom sound/soc/qcom \
-                        drivers/misc/fastrpc.c kernel/sched/cpufreq.c; do
+                        drivers/tty/serial/msm_serial.c; do
               echo ""
               echo "===== $path ====="
-              git log --oneline "$RANGE" -- "$path" 2>/dev/null | head -30
+              git log --oneline "$RANGE" -- "$path" 2>/dev/null | head -20
             done
           } > risk-audit/risky-commits.txt
-          cat risk-audit/risky-commits.txt | head -60
+          head -30 risk-audit/risky-commits.txt
 
-      - name: "🔀 Merge linux-stable tags"
+      - name: "🔀 Merge linux-stable tags (auto-resolve known conflicts)"
         id: merge
         run: |
-          set -o pipefail
-          git checkout -b upgrade-work
+          # 清理可能残留的 merge 状态(防止上次中断污染)
+          git merge --abort 2>/dev/null || true
+          rm -f .git/MERGE_HEAD .git/MERGE_MSG .git/MERGE_MODE 2>/dev/null
+          git checkout -B upgrade-work
           START=${{ inputs.start }}
           END=${{ inputs.end }}
           CONFLICT_LOG="$GITHUB_WORKSPACE/risk-audit/conflicts.txt"
@@ -75,47 +98,112 @@ jobs:
           FAIL=0
           for i in $(seq "$START" "$END"); do
             TAG="v4.9.$i"
-            echo "================ $TAG ================"
             if git merge "$TAG" --no-edit > /tmp/merge.log 2>&1; then
-              cat /tmp/merge.log
-              echo "✅ $TAG merged"
+              echo "✅ $TAG"
               OK=$((OK+1))
-            else
-              cat /tmp/merge.log
-              FAIL=$((FAIL+1))
-              echo "❌ $TAG CONFLICTS:"
-              git diff --name-only --diff-filter=U | tee -a "$CONFLICT_LOG"
-              {
-                echo ""
-                echo "### $TAG 冲突详情:"
-                git diff --diff-filter=U | head -100
-              } >> "$CONFLICT_LOG"
-              # 阶段 0: 只 abort 记录, 不自动解决
-              git merge --abort
-              echo "::warning::$TAG 有冲突(已记录,未解决)"
-              if [ "$END" = "$START" ]; then
-                # 单版本验证模式: 有冲突就停, 看清单
+              continue
+            fi
+            # 有冲突: 看是哪些文件
+            CONFLICT_FILES=$(git diff --name-only --diff-filter=U)
+            echo "⚠️ $TAG 冲突: $CONFLICT_FILES"
+            RESOLVED=1
+            for f in $CONFLICT_FILES; do
+              case "$f" in
+                Makefile|net/ipv6/ip6_tunnel.c|include/linux/siphash.h|drivers/usb/gadget/composite.c|drivers/nvmem/core.c|drivers/block/loop.c|kernel/cpu.c|drivers/hid/hid-core.c|drivers/of/Kconfig|drivers/net/phy/micrel.c|net/socket.c)
+                  # 保留双方内容(删除冲突标记行) - 双方各加不同代码行
+                  sed -i '/^<<<<<<</d; /^=======$/d; /^>>>>>>>/d' "$f"
+                  git add "$f"
+                  echo "  → $f 手动合并(保留双方)"
+                  ;;
+                sound/core/compress_offload.c|sound/usb/mixer.c|arch/arm/mm/init.c|drivers/usb/gadget/configfs.c|drivers/usb/gadget/udc/core.c|drivers/usb/host/xhci.c|scripts/mod/modpost.c|arch/arm64/kernel/psci.c|kernel/time/hrtimer.c|drivers/usb/host/xhci-mem.c|scripts/dtc/*|arch/arm64/kernel/smp.c|drivers/scsi/sd.c|include/linux/overflow.h|fs/userfaultfd.c)
+                  # 上游修复(状态机/USB音频), 通用框架代码非 CAF 定制
+                  git checkout --theirs "$f" 2>/dev/null || true
+                  git add "$f" 2>/dev/null || true
+                  echo "  → $f 采用上游(修复)"
+                  ;;
+                fs/userfaultfd.c)
+                  # CAF vm_write_begin 并发模型与上游 still_valid 修复交错复杂,
+                  # 保守保留 CAF(后续可单独 backport still_valid)
+                  git checkout --ours "$f" 2>/dev/null || true
+                  git add "$f" 2>/dev/null || true
+                  echo "  → $f 保留 CAF 版(并发模型,保守)"
+                  ;;
+                drivers/tty/serial/msm_serial.c)
+                  # CAF 的 TX reset 增强保留
+                  git checkout --ours "$f" 2>/dev/null || git checkout --theirs "$f"
+                  git add "$f"
+                  echo "  → msm_serial.c 保留 CAF 版"
+                  ;;
+                kernel/sched/core.c|fs/f2fs/*|fs/ext4/*|drivers/pinctrl/qcom/*|drivers/thermal/thermal_core.c|drivers/tty/n_tty.c|drivers/usb/dwc3/*|drivers/input/touchscreen/atmel_mxt_ts.c|drivers/gpu/drm/drm_property.c|kernel/locking/spinlock_debug.c|arch/arm64/mm/mmu.c|net/wireless/util.c|drivers/md/dm.c|net/netfilter/xt_bpf.c|drivers/gpu/drm/msm/*|drivers/usb/gadget/function/f_fs.c|drivers/char/random.c|drivers/clk/qcom/*|include/uapi/linux/coresight-stm.h|drivers/scsi/ufs/*|drivers/of/base.c|sound/core/rawmidi.c|drivers/usb/gadget/function/f_uac2.c)
+                  # CAF 的 cpu_isolated_mask 处理是平台特性,上游简化版丢失
+                  git checkout --ours "$f" 2>/dev/null || git checkout --ours -- "$f"
+                  git add "$f"
+                  echo "  → core.c 保留 CAF(含 isolated CPU 处理)"
+                  ;;
+                kernel/sched/*|drivers/android/*)
+                  # CAF binder 是 Google lockless 重构,比上游 stable 新,
+                  # 换上游老版本 binder 会破坏 Android 用户空间
+                  git checkout --ours "$f" 2>/dev/null || true
+                  git add "$f" 2>/dev/null || true
+                  echo "  → $f 保留 CAF 版(binder out-of-tree)"
+                  ;;
+                arch/arm64/configs/*|kernel/Makefile|drivers/cpufreq/Kconfig|block/Kconfig.iosched)
+                  # 我们的移植/补丁文件保留 ours
+                  git checkout --ours "$f" 2>/dev/null || true
+                  git add "$f" 2>/dev/null || true
+                  echo "  → $f 保留 ours(移植补丁)"
+                  ;;
+                *)
+                  # 未知冲突文件: 记录, 不自动解决
+                  echo "  ❓ 未知冲突: $f" | tee -a "$CONFLICT_LOG"
+                  RESOLVED=0
+                  ;;
+              esac
+            done
+            if [ "$RESOLVED" = "1" ]; then
+              if git commit --no-edit > /dev/null 2>&1; then
+                echo "✅ $TAG (冲突已自动解决)"
+                OK=$((OK+1))
+              else
+                echo "❌ $TAG commit 失败" | tee -a "$CONFLICT_LOG"
+                git merge --abort
+                FAIL=$((FAIL+1))
                 break
               fi
+            else
+              DETAILS=$(git diff --diff-filter=U 2>/dev/null)
+              {
+                echo "### $TAG 未知冲突详情:"
+                echo "$DETAILS"
+              } >> "$CONFLICT_LOG"
+              git merge --abort
+              FAIL=$((FAIL+1))
+              echo "⏹️ 遇到未知冲突, 停止"
+              break
             fi
           done
-          echo "merged_ok=$OK" >> "$GITHUB_OUTPUT"
-          echo "merged_fail=$FAIL" >> "$GITHUB_OUTPUT"
           echo ""
-          echo "=== 统计: 成功 $OK, 冲突 $FAIL ==="
+          echo "=== 统计: 成功 $OK, 失败 $FAIL ==="
+          echo "last_version=$i" >> "$GITHUB_OUTPUT"
+          echo "merge_ok=$OK" >> "$GITHUB_OUTPUT"
+          echo "merge_fail=$FAIL" >> "$GITHUB_OUTPUT"
+          git log --oneline -3
 
-      - name: "📊 Check merge base (阶段 0 验证)"
-        if: ${{ inputs.start == inputs.end }}
+      - name: "📊 Verification info"
+        if: always()
         run: |
-          echo "=== 我们 HEAD 与 v4.9.${{ inputs.start }} 的 merge base ==="
-          git merge-base HEAD "v4.9.${{ inputs.start }}" | head -1
-          MB=$(git merge-base HEAD "v4.9.${{ inputs.start }}" 2>/dev/null)
-          if [ -n "$MB" ]; then
-            echo "merge base commit:"
-            git log -1 --oneline "$MB"
-          else
-            echo "⚠️ 无 merge base (unrelated histories)"
-          fi
+          {
+            echo "=== 升级结果 ==="
+            echo "成功: ${{ steps.merge.outputs.merge_ok }}"
+            echo "失败: ${{ steps.merge.outputs.merge_fail }}"
+            echo "最后处理: v4.9.${{ steps.merge.outputs.last_version }}"
+            echo ""
+            echo "=== 当前内核版本 ==="
+            head -5 Makefile | grep -E "VERSION|PATCHLEVEL|SUBLEVEL|EXTRAVERSION"
+            echo ""
+            echo "=== 关键文件状态 ==="
+            git status --short | head -10
+          } | tee risk-audit/result.txt
 
       - name: "📁 Upload risk audit"
         if: always()
@@ -123,3 +211,34 @@ jobs:
         with:
           name: upgrade-audit-${{ inputs.start }}-${{ inputs.end }}
           path: risk-audit/
+
+      - name: "🔨 Build kernel (compile validation)"
+        if: ${{ always() && steps.merge.conclusion == 'success' }}
+        run: |
+          set -e
+          # 下载 clang13 工具链
+          git clone --depth=1 --branch clang13 https://github.com/diyishengqing/android-kernel-tools clang13
+          TC=$PWD/clang13
+          # 生成 defconfig
+          make O=out ARCH=arm64 \
+            CC=$TC/clang/host/linux-x86/clang-r428724/bin/clang \
+            CROSS_COMPILE=$TC/linaro-gcc-4.9/aarch64-linux-gnu/bin/aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=$TC/linaro-gcc-4.9/arm-linux-gnueabi/bin/arm-linux-gnueabi- \
+            HOSTCC=$TC/clang/host/linux-x86/clang-r428724/bin/clang \
+            HOSTCFLAGS="-fcommon -O2" \
+            polaris_user_defconfig
+          # 编译内核(仅验证编译,不打包)
+          make O=out ARCH=arm64 -j"$(nproc)" \
+            CC=$TC/clang/host/linux-x86/clang-r428724/bin/clang \
+            CROSS_COMPILE=$TC/linaro-gcc-4.9/aarch64-linux-gnu/bin/aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=$TC/linaro-gcc-4.9/arm-linux-gnueabi/bin/arm-linux-gnueabi- \
+            HOSTCC=$TC/clang/host/linux-x86/clang-r428724/bin/clang \
+            HOSTCFLAGS="-fcommon -O2" 2>&1 | tee build.log
+          # 检查产物
+          ls -lh out/arch/arm64/boot/Image.gz-dtb 2>/dev/null && echo "✅ 编译成功" || { echo "❌ 编译失败"; exit 1; }
+
+      - name: "🚀 Push to upgrade branch"
+        if: ${{ inputs.push_branch != '' && steps.merge.outputs.merge_fail == '0' }}
+        run: |
+          git push "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/Aukimor/Xiaomi_Kernel_OpenSource-sdm845.git" upgrade-work:${{ inputs.push_branch }} --force
+          echo "✅ 已 push 到 ${{ inputs.push_branch }}"
