@@ -190,6 +190,19 @@ jobs:
           echo "merge_fail=$FAIL" >> "$GITHUB_OUTPUT"
           git log --oneline -3
 
+      - name: "🔒 Force-protect directories (整目录 ours 防自动合并)"
+        if: always()
+        run: |
+          # merge 规则只在冲突时生效,无冲突文件会被自动合入上游改动。
+          # 对需要"整目录冻结"的子系统,merge 后强制重置到 CAF 基线。
+          echo "=== 强制重置整目录 ours 的子系统 ==="
+          for dir in fs/ext4 fs/f2fs drivers/scsi/ufs; do
+            git checkout 88-zstd -- "$dir" 2>/dev/null && echo "  ✅ $dir 已重置到 CAF" || echo "  ⚠️ $dir 重置失败"
+          done
+          # 一致性检查
+          grep -q "s_writepages_rwsem" fs/ext4/ext4.h 2>/dev/null && echo "  ❌ ext4.h 仍有 s_writepages_rwsem" || echo "  ✅ ext4.h 无 s_writepages_rwsem"
+          grep -rq "s_writepages_rwsem" fs/ext4/ 2>/dev/null && echo "  ❌ ext4 目录仍有残留引用" || echo "  ✅ ext4 目录无残留引用"
+
       - name: "📊 Verification info"
         if: always()
         run: |
