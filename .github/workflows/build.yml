@@ -2,6 +2,11 @@ name: Build polaris (88-zstd + KSU)
 
 on:
   workflow_dispatch:
+    inputs:
+      kernel_branch:
+        description: '内核源码分支(默认 88-zstd; 可填升级中间分支如 upgrade-wip)'
+        required: false
+        default: '88-zstd'
 
 env:
   OUT_DIR: "${{ github.workspace }}/out"
@@ -18,7 +23,7 @@ jobs:
       WORKSPACE: ${{ github.workspace }}
       KERNEL_NAME: Xiaomi_Kernel_OpenSource-sdm845
       KERNEL_REPO: https://github.com/Aukimor/Xiaomi_Kernel_OpenSource-sdm845
-      KERNEL_BRANCH: 88-zstd
+      KERNEL_BRANCH: ${{ inputs.kernel_branch || '88-zstd' }}
       KERNEL_DEVICE: polaris
       DEFCONFIG_NAME: polaris_user_defconfig
       ANYKERNEL_NAME: AnyKernel3
@@ -73,23 +78,11 @@ jobs:
           echo "🤔 args: $args"
           echo "args=$args" >> $GITHUB_OUTPUT
 
-      - name: "😋 Update KernelSU"
-        working-directory: ${{ env.KERNEL_NAME }}
-        run: |
-          if [ -d "./KernelSU" ]; then
-            rm -rf "./KernelSU"
-          fi
-          if [ -d "./drivers/kernelsu" ]; then
-            rm -rf "./drivers/kernelsu"
-          fi
-          curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main
-          echo "CONFIG_KPROBES=y" >> arch/arm64/configs/${{ env.DEFCONFIG_NAME }}
-          echo "CONFIG_HAVE_KPROBES=y" >> arch/arm64/configs/${{ env.DEFCONFIG_NAME }}
-          echo "CONFIG_KPROBE_EVENTS=y" >> arch/arm64/configs/${{ env.DEFCONFIG_NAME }}
-
       - name: "👍 Make defconfig"
         working-directory: ${{ env.KERNEL_NAME }}
         run: |
+          make ${{ steps.generate-args.outputs.args }} polaris_stock_defconfig
+          cp ${{ env.OUT_DIR }}/.config arch/arm64/configs/polaris_runtime_config
           make ${{ steps.generate-args.outputs.args }} ${{ env.DEFCONFIG_NAME }}
 
       - name: "🎶 Build kernel"
@@ -100,13 +93,12 @@ jobs:
       - name: "💛 Package AnyKernel3"
         working-directory: ${{ env.ANYKERNEL_NAME }}
         run: |
-          cp ${{ env.KERNEL_NAME }}/${{ env.OUT_DIR }}/arch/arm64/boot/Image.gz-dtb ./Image.gz-dtb
-          cd ${{ env.ANYKERNEL_NAME }}
+          cp ${{ env.OUT_DIR }}/arch/arm64/boot/Image.gz-dtb ./Image.gz-dtb
           zip -r -9 ${{ env.WORKSPACE }}/${{ env.KERNEL_DEVICE }}-KSu-Aukimor-${{ github.run_id }}.zip .
           ls -la ${{ env.WORKSPACE }}/*.zip
 
       - name: "💙 Upload artifact"
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: polaris-KSU-Aukimor
           path: ${{ env.WORKSPACE }}/*.zip
