@@ -2,6 +2,11 @@ name: Build polaris (88-zstd + KSU)
 
 on:
   workflow_dispatch:
+    inputs:
+      kernel_branch:
+        description: '内核源码分支(默认 88-zstd; 可填升级中间分支如 upgrade-wip)'
+        required: false
+        default: '88-zstd'
 
 env:
   OUT_DIR: "${{ github.workspace }}/out"
@@ -18,7 +23,7 @@ jobs:
       WORKSPACE: ${{ github.workspace }}
       KERNEL_NAME: Xiaomi_Kernel_OpenSource-sdm845
       KERNEL_REPO: https://github.com/Aukimor/Xiaomi_Kernel_OpenSource-sdm845
-      KERNEL_BRANCH: 88-zstd
+      KERNEL_BRANCH: ${{ inputs.kernel_branch || '88-zstd' }}
       KERNEL_DEVICE: polaris
       DEFCONFIG_NAME: polaris_user_defconfig
       ANYKERNEL_NAME: AnyKernel3
