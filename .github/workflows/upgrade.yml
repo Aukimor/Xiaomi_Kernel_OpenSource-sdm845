@@ -45,10 +45,26 @@ jobs:
           git config --global user.name "Aukimor"
           git config --global user.email "1041854814@qq.com"
 
+      - name: "🎲 Restore linux-stable bundle cache"
+        id: bundle-cache
+        uses: actions/cache@v4
+        with:
+          path: /tmp/linux-stable.bundle
+          key: linux-stable-4.9-bundle-v2
+
       - name: "📡 Fetch linux-stable (linux-4.9.y)"
         run: |
-          git remote add stable https://kernel.googlesource.com/pub/scm/linux/kernel/git/stable/linux-stable.git
-          git fetch --progress stable linux-4.9.y --tags 2>&1 | tail -3
+          if [ -f /tmp/linux-stable.bundle ]; then
+            echo "=== 从缓存 bundle 恢复 ==="
+            git fetch /tmp/linux-stable.bundle 'refs/tags/*:refs/tags/*'
+          else
+            echo "=== 首次 fetch(慢),之后走缓存 ==="
+            git remote add stable https://kernel.googlesource.com/pub/scm/linux/kernel/git/stable/linux-stable.git
+            git fetch --progress stable linux-4.9.y --tags 2>&1 | tail -3
+            git bundle create /tmp/linux-stable.bundle --tags v4.9.186 v4.9.337 $(git tag -l 'v4.9.187' | head -1) 2>/dev/null || \
+            git bundle create /tmp/linux-stable.bundle --tags 2>/dev/null || \
+            echo "bundle 创建失败,下次仍走网络"
+          fi
           echo "=== 最新 v4.9.x tag ==="
           git tag -l 'v4.9.*' | tail -5
 
