@@ -116,7 +116,7 @@ jobs:
                   git add "$f"
                   echo "  → $f 手动合并(保留双方)"
                   ;;
-                sound/core/compress_offload.c|sound/usb/mixer.c|arch/arm/mm/init.c|drivers/usb/gadget/configfs.c|drivers/usb/gadget/udc/core.c|drivers/usb/host/xhci.c|scripts/mod/modpost.c|arch/arm64/kernel/psci.c|kernel/time/hrtimer.c|drivers/usb/host/xhci-mem.c|scripts/dtc/*|arch/arm64/kernel/smp.c|drivers/scsi/sd.c|fs/userfaultfd.c)
+                sound/core/compress_offload.c|sound/usb/mixer.c|arch/arm/mm/init.c|drivers/usb/gadget/configfs.c|drivers/usb/gadget/udc/core.c|drivers/usb/host/xhci.c|scripts/mod/modpost.c|arch/arm64/kernel/psci.c|kernel/time/hrtimer.c|drivers/usb/host/xhci-mem.c|scripts/dtc/*|arch/arm64/kernel/smp.c|fs/userfaultfd.c)
                   # 上游修复(状态机/USB音频), 通用框架代码非 CAF 定制
                   git checkout --theirs "$f" 2>/dev/null || true
                   git add "$f" 2>/dev/null || true
@@ -135,7 +135,7 @@ jobs:
                   git add "$f"
                   echo "  → msm_serial.c 保留 CAF 版"
                   ;;
-                kernel/sched/core.c|fs/f2fs/*|fs/ext4/*|drivers/pinctrl/qcom/*|drivers/thermal/thermal_core.c|drivers/tty/n_tty.c|drivers/usb/dwc3/*|drivers/input/touchscreen/atmel_mxt_ts.c|drivers/gpu/drm/drm_property.c|kernel/locking/spinlock_debug.c|arch/arm64/mm/mmu.c|net/wireless/util.c|drivers/md/dm.c|net/netfilter/xt_bpf.c|drivers/gpu/drm/msm/*|drivers/usb/gadget/function/f_fs.c|drivers/char/random.c|drivers/clk/qcom/*|include/uapi/linux/coresight-stm.h|drivers/scsi/ufs/*|drivers/of/base.c|sound/core/rawmidi.c|drivers/usb/gadget/function/f_uac2.c|drivers/hid/hid-core.c|include/linux/overflow.h)
+                kernel/sched/core.c|fs/f2fs/*|fs/ext4/*|drivers/pinctrl/qcom/*|drivers/thermal/thermal_core.c|drivers/tty/n_tty.c|drivers/usb/dwc3/*|drivers/input/touchscreen/atmel_mxt_ts.c|drivers/gpu/drm/drm_property.c|kernel/locking/spinlock_debug.c|arch/arm64/mm/mmu.c|net/wireless/util.c|drivers/md/dm.c|net/netfilter/xt_bpf.c|drivers/gpu/drm/msm/*|drivers/usb/gadget/function/f_fs.c|drivers/char/random.c|drivers/clk/qcom/*|include/uapi/linux/coresight-stm.h|drivers/scsi/ufs/*|drivers/of/base.c|sound/core/rawmidi.c|drivers/usb/gadget/function/f_uac2.c|drivers/hid/hid-core.c|include/linux/overflow.h|drivers/scsi/sd.c)
                   # CAF 的 cpu_isolated_mask 处理是平台特性,上游简化版丢失
                   git checkout --ours "$f" 2>/dev/null || git checkout --ours -- "$f"
                   git add "$f"
@@ -200,7 +200,7 @@ jobs:
             git checkout 88-zstd -- "$dir" 2>/dev/null && echo "  ✅ $dir 已重置到 CAF" || echo "  ⚠️ $dir 重置失败"
           done
           # 单文件保护(跨文件依赖必须整体 CAF)
-          for f in drivers/hid/hid-core.c include/linux/overflow.h; do
+          for f in drivers/hid/hid-core.c include/linux/overflow.h drivers/scsi/sd.c; do
             git checkout 88-zstd -- "$f" 2>/dev/null && echo "  ✅ $f 已重置" || echo "  ⚠️ $f 重置失败"
           done
           # 给 CAF overflow.h 补 check_shl_overflow(上游新增,vmalloc 等自动合入的代码引用它)
@@ -241,21 +241,16 @@ jobs:
           # 下载 clang13 工具链
           git clone --depth=1 --branch clang13 https://github.com/diyishengqing/android-kernel-tools clang13
           TC=$PWD/clang13
-          # 生成 defconfig
-          make O=out ARCH=arm64 \
-            CC=$TC/clang/host/linux-x86/clang-r428724/bin/clang \
-            CROSS_COMPILE=$TC/linaro-gcc-4.9/aarch64-linux-gnu/bin/aarch64-linux-gnu- \
-            CROSS_COMPILE_ARM32=$TC/linaro-gcc-4.9/arm-linux-gnueabi/bin/arm-linux-gnueabi- \
-            HOSTCC=$TC/clang/host/linux-x86/clang-r428724/bin/clang \
-            HOSTCFLAGS="-fcommon -O2" \
-            polaris_user_defconfig
-          # 编译内核(仅验证编译,不打包)
-          make O=out ARCH=arm64 -j"$(nproc)" \
-            CC=$TC/clang/host/linux-x86/clang-r428724/bin/clang \
-            CROSS_COMPILE=$TC/linaro-gcc-4.9/aarch64-linux-gnu/bin/aarch64-linux-gnu- \
-            CROSS_COMPILE_ARM32=$TC/linaro-gcc-4.9/arm-linux-gnueabi/bin/arm-linux-gnueabi- \
-            HOSTCC=$TC/clang/host/linux-x86/clang-r428724/bin/clang \
-            HOSTCFLAGS="-fcommon -O2" 2>&1 | tee build.log
+          CC=$TC/clang/host/linux-x86/clang-r428724/bin/clang
+          CX=$TC/linaro-gcc-4.9/aarch64-linux-gnu/bin/aarch64-linux-gnu-
+          CX32=$TC/linaro-gcc-4.9/arm-linux-gnueabi/bin/arm-linux-gnueabi-
+          # 1. 生成 runtime config(kernel/Makefile 的 config.gz 欺骗补丁需要)
+          make O=out ARCH=arm64 CC=$CC CROSS_COMPILE=$CX HOSTCC=$CC HOSTCFLAGS="-fcommon -O2" polaris_stock_defconfig
+          cp out/.config arch/arm64/configs/polaris_runtime_config
+          # 2. 切回优化 defconfig
+          make O=out ARCH=arm64 CC=$CC CROSS_COMPILE=$CX HOSTCC=$CC HOSTCFLAGS="-fcommon -O2" polaris_user_defconfig
+          # 3. 编译内核(仅验证编译,不打包)
+          make O=out ARCH=arm64 -j"$(nproc)" CC=$CC CROSS_COMPILE=$CX CROSS_COMPILE_ARM32=$CX32 HOSTCC=$CC HOSTCFLAGS="-fcommon -O2" 2>&1 | tee build.log
           # 检查产物
           ls -lh out/arch/arm64/boot/Image.gz-dtb 2>/dev/null && echo "✅ 编译成功" || { echo "❌ 编译失败"; exit 1; }
 
