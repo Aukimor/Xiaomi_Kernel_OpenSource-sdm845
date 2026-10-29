@@ -196,7 +196,7 @@ jobs:
           # merge 规则只在冲突时生效,无冲突文件会被自动合入上游改动。
           # 对需要"整目录冻结"的子系统,merge 后强制重置到 CAF 基线。
           echo "=== 强制重置整目录 ours 的子系统 ==="
-          for dir in fs/ext4 fs/f2fs drivers/scsi/ufs; do
+          for dir in fs/ext4 fs/f2fs drivers/scsi/ufs kernel/sched; do
             git checkout 88-zstd -- "$dir" 2>/dev/null && echo "  ✅ $dir 已重置到 CAF" || echo "  ⚠️ $dir 重置失败"
           done
           # 单文件保护(跨文件依赖必须整体 CAF)
