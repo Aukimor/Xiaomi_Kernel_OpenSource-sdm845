@@ -91,7 +91,7 @@ jobs:
             RESOLVED=1
             for f in $CONFLICT_FILES; do
               case "$f" in
-                Makefile|net/ipv6/ip6_tunnel.c|include/linux/siphash.h|drivers/usb/gadget/composite.c|drivers/nvmem/core.c|drivers/block/loop.c|kernel/cpu.c|drivers/hid/hid-core.c|drivers/of/Kconfig|drivers/net/phy/micrel.c)
+                Makefile|net/ipv6/ip6_tunnel.c|include/linux/siphash.h|drivers/usb/gadget/composite.c|drivers/nvmem/core.c|drivers/block/loop.c|kernel/cpu.c|drivers/hid/hid-core.c|drivers/of/Kconfig|drivers/net/phy/micrel.c|net/socket.c)
                   # 保留双方内容(删除冲突标记行) - 双方各加不同代码行
                   sed -i '/^<<<<<<</d; /^=======$/d; /^>>>>>>>/d' "$f"
                   git add "$f"
@@ -195,7 +195,7 @@ jobs:
           path: risk-audit/
 
       - name: "🔨 Build kernel (compile validation)"
-        if: ${{ steps.merge.outputs.merge_fail == '0' }}
+        if: ${{ always() && steps.merge.conclusion == 'success' }}
         run: |
           set -e
           # 下载 clang13 工具链
