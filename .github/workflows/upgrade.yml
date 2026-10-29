@@ -203,6 +203,11 @@ jobs:
           for f in drivers/hid/hid-core.c include/linux/overflow.h; do
             git checkout 88-zstd -- "$f" 2>/dev/null && echo "  ✅ $f 已重置" || echo "  ⚠️ $f 重置失败"
           done
+          # 给 CAF overflow.h 补 check_shl_overflow(上游新增,vmalloc 等自动合入的代码引用它)
+          if ! grep -q "check_shl_overflow" include/linux/overflow.h 2>/dev/null; then
+            printf '\n/* upstream 4.9.x addition: needed by vmalloc etc. */\nstatic inline __must_check bool check_shl_overflow(unsigned long a, unsigned int s, unsigned long *d)\n{\n\tif (s >= BITS_PER_LONG)\n\t\treturn true;\n\t*d = a << s;\n\treturn a != (*d >> s);\n}\n' >> include/linux/overflow.h
+            echo "  ✅ overflow.h 补 check_shl_overflow"
+          fi
           # 一致性检查
           grep -q "s_writepages_rwsem" fs/ext4/ext4.h 2>/dev/null && echo "  ❌ ext4.h 仍有 s_writepages_rwsem" || echo "  ✅ ext4.h 无 s_writepages_rwsem"
 
