@@ -155,4 +155,138 @@ jobs:
                   git add "$f"
                   echo "  → msm_serial.c 保留 CAF 版"
                   ;;
-                kernel/sched/core.c|fs/f2fs/*|fs/ext4/*|drivers/pinctrl/qcom/*|drivers/thermal/thermal_core.c|drivers/tty/n_tty.c|drivers/usb/dwc3/*|drivers/input/touchscreen/atmel_mxt_ts.c|drivers/gpu/drm/drm_property.c|kernel/locking/spinlock_debug.c|arch/arm64/mm/mmu.c|net/wireless/util.c|drivers/md/dm.c|net/netfilter/xt_bpf.c|drivers/gpu/drm/msm/*|drivers/usb/gadget/function/f_fs.c|drivers/char/random.c|drivers/clk/qcom/*|include/uapi/linux/coresight-stm.h|drivers/scsi/ufs/*|drivers/of/base.c|sound/core/rawmidi.c|drivers/usb/gadget/function/f_uac2.c|drivers/hid/hid-core.c|include/linux/overflow.h|drivers/scsi/sd.c|drivers/usb/gadget/composite.c|kernel
+                kernel/sched/core.c|fs/f2fs/*|fs/ext4/*|drivers/pinctrl/qcom/*|drivers/thermal/thermal_core.c|drivers/tty/n_tty.c|drivers/usb/dwc3/*|drivers/input/touchscreen/atmel_mxt_ts.c|drivers/gpu/drm/drm_property.c|kernel/locking/spinlock_debug.c|arch/arm64/mm/mmu.c|net/wireless/util.c|drivers/md/dm.c|net/netfilter/xt_bpf.c|drivers/gpu/drm/msm/*|drivers/usb/gadget/function/f_fs.c|drivers/char/random.c|drivers/clk/qcom/*|include/uapi/linux/coresight-stm.h|drivers/scsi/ufs/*|drivers/of/base.c|sound/core/rawmidi.c|drivers/usb/gadget/function/f_uac2.c|drivers/hid/hid-core.c|include/linux/overflow.h|drivers/scsi/sd.c|drivers/usb/gadget/composite.c|kernel/time/hrtimer.c|drivers/usb/gadget/configfs.c|drivers/usb/gadget/udc/core.c|drivers/usb/host/xhci.c|drivers/irqchip/irq-gic.c|net/netlink/genetlink.c|include/net/genetlink.h)
+                  # 这些文件是 CAF 私有 API 的定义侧(hrtimer_quiesce_cpu/create_function_device/
+                  # usb_gadget_func_wakeup/usb_gsi_ep_op/xhci_handshake_check_state 等),
+                  # 整文件 theirs 会在链接期切断全树调用链。上游修复暂不 backport(登记)。
+                  # CAF 的 cpu_isolated_mask 处理是平台特性,上游简化版丢失
+                  git checkout --ours "$f" 2>/dev/null || git checkout --ours -- "$f"
+                  git add "$f"
+                  echo "  → core.c 保留 CAF(含 isolated CPU 处理)"
+                  ;;
+                kernel/sched/*|drivers/android/*)
+                  # CAF binder 是 Google lockless 重构,比上游 stable 新,
+                  # 换上游老版本 binder 会破坏 Android 用户空间
+                  git checkout --ours "$f" 2>/dev/null || true
+                  git add "$f" 2>/dev/null || true
+                  echo "  → $f 保留 CAF 版(binder out-of-tree)"
+                  ;;
+                arch/arm64/configs/*|kernel/Makefile|drivers/cpufreq/Kconfig|block/Kconfig.iosched)
+                  # 我们的移植/补丁文件保留 ours
+                  git checkout --ours "$f" 2>/dev/null || true
+                  git add "$f" 2>/dev/null || true
+                  echo "  → $f 保留 ours(移植补丁)"
+                  ;;
+                *)
+                  # 未知冲突文件: 记录, 不自动解决
+                  echo "  ❓ 未知冲突: $f" | tee -a "$CONFLICT_LOG"
+                  RESOLVED=0
+                  ;;
+              esac
+            done
+            if [ "$RESOLVED" = "1" ]; then
+              if git commit --no-edit > /dev/null 2>&1; then
+                echo "✅ $TAG (冲突已自动解决)"
+                OK=$((OK+1))
+              else
+                echo "❌ $TAG commit 失败" | tee -a "$CONFLICT_LOG"
+                git merge --abort
+                FAIL=$((FAIL+1))
+                break
+              fi
+            else
+              DETAILS=$(git diff --diff-filter=U 2>/dev/null)
+              {
+                echo "### $TAG 未知冲突详情:"
+                echo "$DETAILS"
+              } >> "$CONFLICT_LOG"
+              git merge --abort
+              FAIL=$((FAIL+1))
+              echo "⏹️ 遇到未知冲突, 停止"
+              break
+            fi
+          done
+          echo ""
+          echo "=== 统计: 成功 $OK, 失败 $FAIL ==="
+          echo "last_version=$i" >> "$GITHUB_OUTPUT"
+          echo "merge_ok=$OK" >> "$GITHUB_OUTPUT"
+          echo "merge_fail=$FAIL" >> "$GITHUB_OUTPUT"
+          git log --oneline -3
+
+      - name: "🔒 Force-protect directories (整目录 ours 防自动合并)"
+        if: always()
+        run: |
+          # merge 规则只在冲突时生效,无冲突文件会被自动合入上游改动。
+          # 对需要"整目录冻结"的子系统,merge 后强制重置到 CAF 基线。
+          echo "=== 强制重置整目录 ours 的子系统 ==="
+          for dir in fs/ext4 fs/f2fs drivers/scsi/ufs kernel/sched; do
+            git checkout 88-zstd -- "$dir" 2>/dev/null && echo "  ✅ $dir 已重置到 CAF" || echo "  ⚠️ $dir 重置失败"
+          done
+          # 单文件保护(跨文件依赖必须整体 CAF)
+          for f in drivers/hid/hid-core.c include/linux/overflow.h drivers/scsi/sd.c drivers/usb/gadget/composite.c arch/arm64/kernel/smp.c kernel/time/hrtimer.c drivers/usb/gadget/configfs.c drivers/usb/gadget/udc/core.c drivers/usb/host/xhci.c drivers/irqchip/irq-gic.c net/netlink/genetlink.c include/net/genetlink.h; do
+            git checkout 88-zstd -- "$f" 2>/dev/null && echo "  ✅ $f 已重置" || echo "  ⚠️ $f 重置失败"
+          done
+          # 给 CAF overflow.h 补 check_shl_overflow(上游新增,vmalloc 等自动合入的代码引用它)
+          if ! grep -q "check_shl_overflow" include/linux/overflow.h 2>/dev/null; then
+            printf '\n/* upstream 4.9.x addition: needed by vmalloc etc. */\nstatic inline __must_check bool check_shl_overflow(unsigned long a, unsigned int s, unsigned long *d)\n{\n\tif (s >= BITS_PER_LONG)\n\t\treturn true;\n\t*d = a << s;\n\treturn a != (*d >> s);\n}\n' >> include/linux/overflow.h
+            echo "  ✅ overflow.h 补 check_shl_overflow"
+          fi
+          # 给 CAF sched/core.c 补 sysctl_sched_rr_timeslice:
+          # 上游 4.9.230 sysctl.c 的 sched_rr_timeslice_ms 表项指向新符号名(定义在上游 core.c),
+          # kernel/sched 整目录重置成 CAF 后无此变量 → .data 段链接失败。
+          # 注意: 该 sysctl 节点可读写但 CAF 调度实际用 RR_TIMESLICE 宏, 节点不生效(诚实登记)。
+          if ! grep -q "sysctl_sched_rr_timeslice" kernel/sched/core.c 2>/dev/null; then
+            printf '\n/* upstream 4.9.230 symbol: sysctl.c references it; CAF rt scheduler uses RR_TIMESLICE instead */\nint sysctl_sched_rr_timeslice __read_mostly = 1000;\n' >> kernel/sched/core.c
+            echo "  ✅ core.c 补 sysctl_sched_rr_timeslice"
+          fi
+          # 一致性检查
+          grep -q "s_writepages_rwsem" fs/ext4/ext4.h 2>/dev/null && echo "  ❌ ext4.h 仍有 s_writepages_rwsem" || echo "  ✅ ext4.h 无 s_writepages_rwsem"
+
+      - name: "📊 Verification info"
+        if: always()
+        run: |
+          {
+            echo "=== 升级结果 ==="
+            echo "成功: ${{ steps.merge.outputs.merge_ok }}"
+            echo "失败: ${{ steps.merge.outputs.merge_fail }}"
+            echo "最后处理: v4.9.${{ steps.merge.outputs.last_version }}"
+            echo ""
+            echo "=== 当前内核版本 ==="
+            head -5 Makefile | grep -E "VERSION|PATCHLEVEL|SUBLEVEL|EXTRAVERSION"
+            echo ""
+            echo "=== 关键文件状态 ==="
+            git status --short | head -10
+          } | tee risk-audit/result.txt
+
+      - name: "📁 Upload risk audit"
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: upgrade-audit-${{ inputs.start }}-${{ inputs.end }}
+          path: risk-audit/
+
+      - name: "🔨 Build kernel (compile validation)"
+        if: ${{ always() && steps.merge.conclusion == 'success' }}
+        run: |
+          set -e
+          # 下载 clang13 工具链
+          git clone --depth=1 --branch clang13 https://github.com/diyishengqing/android-kernel-tools clang13
+          TC=$PWD/clang13
+          CC=$TC/clang/host/linux-x86/clang-r428724/bin/clang
+          CX=$TC/linaro-gcc-4.9/aarch64-linux-gnu/bin/aarch64-linux-gnu-
+          CX32=$TC/linaro-gcc-4.9/arm-linux-gnueabi/bin/arm-linux-gnueabi-
+          # 1. 生成 runtime config(kernel/Makefile 的 config.gz 欺骗补丁需要)
+          make O=out ARCH=arm64 CC=$CC CROSS_COMPILE=$CX HOSTCC=$CC HOSTCFLAGS="-fcommon -O2" polaris_stock_defconfig
+          cp out/.config arch/arm64/configs/polaris_runtime_config
+          # 2. 切回优化 defconfig
+          make O=out ARCH=arm64 CC=$CC CROSS_COMPILE=$CX HOSTCC=$CC HOSTCFLAGS="-fcommon -O2" polaris_user_defconfig
+          # 3. 编译内核(仅验证编译,不打包)
+          make O=out ARCH=arm64 -j"$(nproc)" CC=$CC CROSS_COMPILE=$CX CROSS_COMPILE_ARM32=$CX32 HOSTCC=$CC HOSTCFLAGS="-fcommon -O2" 2>&1 | tee build.log
+          # 检查产物
+          ls -lh out/arch/arm64/boot/Image.gz-dtb 2>/dev/null && echo "✅ 编译成功" || { echo "❌ 编译失败"; exit 1; }
+
+      - name: "🚀 Push to upgrade branch"
+        if: ${{ inputs.push_branch != '' && steps.merge.outputs.merge_fail == '0' }}
+        run: |
+          git push "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/Aukimor/Xiaomi_Kernel_OpenSource-sdm845.git" upgrade-work:${{ inputs.push_branch }} --force
+          echo "✅ 已 push 到 ${{ inputs.push_branch }}"
