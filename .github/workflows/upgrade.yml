@@ -81,6 +81,9 @@ jobs:
               echo "===== $path ====="
               git log --oneline "$RANGE" -- "$path" 2>/dev/null | head -20
             done
+            echo ""
+            echo "=== 删除接口/取消导出/移动符号类提交(跨文件符号断裂高风险, 外部AI C方案) ==="
+            git log --oneline "$RANGE" 2>/dev/null | grep -iE 'remove|drop|unexport|move .*(to|from)|revert' | head -40
           } > risk-audit/risky-commits.txt
           head -30 risk-audit/risky-commits.txt
 
@@ -127,6 +130,15 @@ jobs:
                 sound/core/compress_offload.c|sound/usb/mixer.c|arch/arm/mm/init.c|scripts/mod/modpost.c|arch/arm64/kernel/psci.c|drivers/usb/host/xhci-mem.c|scripts/dtc/*|fs/userfaultfd.c|drivers/usb/host/xhci-plat.c|scripts/Kbuild.include)
                   # 上游修复(状态机/USB音频), 通用框架代码非 CAF 定制
                   git checkout --theirs "$f" 2>/dev/null || true
+                  # 外部AI C方案: theirs 后检查相对 CAF 基线删除的导出符号是否仍有引用方。
+                  # 命中 = 定义侧断裂风险(theirs 删了定义, 引用方仍在)。
+                  # 范围仅 EXPORT_SYMBOL 导出符号; 未导出的全局符号(如 DEFINE_PER_CPU)不在覆盖内(诚实登记)。
+                  for sym in $(git diff 88-zstd -- "$f" 2>/dev/null | grep -oP '^-EXPORT_SYMBOL(?:_GPL)?\(\K\w+' | sort -u); do
+                    if git grep -l -E "\b$sym\b" -- '*.c' '*.h' 2>/dev/null | grep -v -q "^$f$"; then
+                      echo "  ⚠️ 定义侧风险: $f theirs 删除导出符号 $sym, CAF 侧仍有引用:" | tee -a "$CONFLICT_LOG"
+                      git grep -l -E "\b$sym\b" -- '*.c' '*.h' 2>/dev/null | grep -v "^$f$" | head -3 | sed 's/^/      /' | tee -a "$CONFLICT_LOG"
+                    fi
+                  done
                   git add "$f" 2>/dev/null || true
                   echo "  → $f 采用上游(修复)"
                   ;;
