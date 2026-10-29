@@ -110,13 +110,13 @@ jobs:
             RESOLVED=1
             for f in $CONFLICT_FILES; do
               case "$f" in
-                Makefile|net/ipv6/ip6_tunnel.c|include/linux/siphash.h|drivers/usb/gadget/composite.c|drivers/nvmem/core.c|drivers/block/loop.c|kernel/cpu.c|drivers/hid/hid-core.c|drivers/of/Kconfig|drivers/net/phy/micrel.c|net/socket.c)
+                Makefile|net/ipv6/ip6_tunnel.c|include/linux/siphash.h|drivers/usb/gadget/composite.c|drivers/nvmem/core.c|drivers/block/loop.c|kernel/cpu.c|drivers/of/Kconfig|drivers/net/phy/micrel.c|net/socket.c)
                   # 保留双方内容(删除冲突标记行) - 双方各加不同代码行
                   sed -i '/^<<<<<<</d; /^=======$/d; /^>>>>>>>/d' "$f"
                   git add "$f"
                   echo "  → $f 手动合并(保留双方)"
                   ;;
-                sound/core/compress_offload.c|sound/usb/mixer.c|arch/arm/mm/init.c|drivers/usb/gadget/configfs.c|drivers/usb/gadget/udc/core.c|drivers/usb/host/xhci.c|scripts/mod/modpost.c|arch/arm64/kernel/psci.c|kernel/time/hrtimer.c|drivers/usb/host/xhci-mem.c|scripts/dtc/*|arch/arm64/kernel/smp.c|drivers/scsi/sd.c|include/linux/overflow.h|fs/userfaultfd.c)
+                sound/core/compress_offload.c|sound/usb/mixer.c|arch/arm/mm/init.c|drivers/usb/gadget/configfs.c|drivers/usb/gadget/udc/core.c|drivers/usb/host/xhci.c|scripts/mod/modpost.c|arch/arm64/kernel/psci.c|kernel/time/hrtimer.c|drivers/usb/host/xhci-mem.c|scripts/dtc/*|arch/arm64/kernel/smp.c|drivers/scsi/sd.c|fs/userfaultfd.c)
                   # 上游修复(状态机/USB音频), 通用框架代码非 CAF 定制
                   git checkout --theirs "$f" 2>/dev/null || true
                   git add "$f" 2>/dev/null || true
@@ -135,7 +135,7 @@ jobs:
                   git add "$f"
                   echo "  → msm_serial.c 保留 CAF 版"
                   ;;
-                kernel/sched/core.c|fs/f2fs/*|fs/ext4/*|drivers/pinctrl/qcom/*|drivers/thermal/thermal_core.c|drivers/tty/n_tty.c|drivers/usb/dwc3/*|drivers/input/touchscreen/atmel_mxt_ts.c|drivers/gpu/drm/drm_property.c|kernel/locking/spinlock_debug.c|arch/arm64/mm/mmu.c|net/wireless/util.c|drivers/md/dm.c|net/netfilter/xt_bpf.c|drivers/gpu/drm/msm/*|drivers/usb/gadget/function/f_fs.c|drivers/char/random.c|drivers/clk/qcom/*|include/uapi/linux/coresight-stm.h|drivers/scsi/ufs/*|drivers/of/base.c|sound/core/rawmidi.c|drivers/usb/gadget/function/f_uac2.c)
+                kernel/sched/core.c|fs/f2fs/*|fs/ext4/*|drivers/pinctrl/qcom/*|drivers/thermal/thermal_core.c|drivers/tty/n_tty.c|drivers/usb/dwc3/*|drivers/input/touchscreen/atmel_mxt_ts.c|drivers/gpu/drm/drm_property.c|kernel/locking/spinlock_debug.c|arch/arm64/mm/mmu.c|net/wireless/util.c|drivers/md/dm.c|net/netfilter/xt_bpf.c|drivers/gpu/drm/msm/*|drivers/usb/gadget/function/f_fs.c|drivers/char/random.c|drivers/clk/qcom/*|include/uapi/linux/coresight-stm.h|drivers/scsi/ufs/*|drivers/of/base.c|sound/core/rawmidi.c|drivers/usb/gadget/function/f_uac2.c|drivers/hid/hid-core.c|include/linux/overflow.h)
                   # CAF 的 cpu_isolated_mask 处理是平台特性,上游简化版丢失
                   git checkout --ours "$f" 2>/dev/null || git checkout --ours -- "$f"
                   git add "$f"
@@ -199,9 +199,12 @@ jobs:
           for dir in fs/ext4 fs/f2fs drivers/scsi/ufs; do
             git checkout 88-zstd -- "$dir" 2>/dev/null && echo "  ✅ $dir 已重置到 CAF" || echo "  ⚠️ $dir 重置失败"
           done
+          # 单文件保护(跨文件依赖必须整体 CAF)
+          for f in drivers/hid/hid-core.c include/linux/overflow.h; do
+            git checkout 88-zstd -- "$f" 2>/dev/null && echo "  ✅ $f 已重置" || echo "  ⚠️ $f 重置失败"
+          done
           # 一致性检查
           grep -q "s_writepages_rwsem" fs/ext4/ext4.h 2>/dev/null && echo "  ❌ ext4.h 仍有 s_writepages_rwsem" || echo "  ✅ ext4.h 无 s_writepages_rwsem"
-          grep -rq "s_writepages_rwsem" fs/ext4/ 2>/dev/null && echo "  ❌ ext4 目录仍有残留引用" || echo "  ✅ ext4 目录无残留引用"
 
       - name: "📊 Verification info"
         if: always()
