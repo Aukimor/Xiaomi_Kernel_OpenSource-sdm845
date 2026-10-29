@@ -116,7 +116,15 @@ jobs:
                   git add "$f"
                   echo "  → $f 手动合并(保留双方)"
                   ;;
-                sound/core/compress_offload.c|sound/usb/mixer.c|arch/arm/mm/init.c|drivers/usb/gadget/configfs.c|drivers/usb/gadget/udc/core.c|drivers/usb/host/xhci.c|scripts/mod/modpost.c|arch/arm64/kernel/psci.c|kernel/time/hrtimer.c|drivers/usb/host/xhci-mem.c|scripts/dtc/*|arch/arm64/kernel/smp.c|fs/userfaultfd.c)
+                arch/arm64/kernel/smp.c)
+                  # CAF 在此定义 cpu_number(per-cpu 变量), 全树 trace 头/fpsimd 引用它。
+                  # 整文件 theirs(如 v4.9.218 的 smp_send_stop 修复)会删掉定义 → 链接期全树 undefined。
+                  # 上游修复仅 smp_send_stop 边缘场景, 取舍: 保定义, 修复暂不 backport(登记)。
+                  git checkout --ours "$f" 2>/dev/null || true
+                  git add "$f" 2>/dev/null || true
+                  echo "  → arch/arm64/kernel/smp.c 保留 CAF(含 cpu_number 定义)"
+                  ;;
+                sound/core/compress_offload.c|sound/usb/mixer.c|arch/arm/mm/init.c|drivers/usb/gadget/configfs.c|drivers/usb/gadget/udc/core.c|drivers/usb/host/xhci.c|scripts/mod/modpost.c|arch/arm64/kernel/psci.c|kernel/time/hrtimer.c|drivers/usb/host/xhci-mem.c|scripts/dtc/*|fs/userfaultfd.c|drivers/usb/host/xhci-plat.c|scripts/Kbuild.include)
                   # 上游修复(状态机/USB音频), 通用框架代码非 CAF 定制
                   git checkout --theirs "$f" 2>/dev/null || true
                   git add "$f" 2>/dev/null || true
@@ -200,7 +208,7 @@ jobs:
             git checkout 88-zstd -- "$dir" 2>/dev/null && echo "  ✅ $dir 已重置到 CAF" || echo "  ⚠️ $dir 重置失败"
           done
           # 单文件保护(跨文件依赖必须整体 CAF)
-          for f in drivers/hid/hid-core.c include/linux/overflow.h drivers/scsi/sd.c drivers/usb/gadget/composite.c; do
+          for f in drivers/hid/hid-core.c include/linux/overflow.h drivers/scsi/sd.c drivers/usb/gadget/composite.c arch/arm64/kernel/smp.c; do
             git checkout 88-zstd -- "$f" 2>/dev/null && echo "  ✅ $f 已重置" || echo "  ⚠️ $f 重置失败"
           done
           # 给 CAF overflow.h 补 check_shl_overflow(上游新增,vmalloc 等自动合入的代码引用它)
