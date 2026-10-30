@@ -119,7 +119,7 @@ jobs:
             RESOLVED=1
             for f in $CONFLICT_FILES; do
               case "$f" in
-                Makefile|net/ipv6/ip6_tunnel.c|include/linux/siphash.h|drivers/nvmem/core.c|drivers/block/loop.c|kernel/cpu.c|drivers/of/Kconfig|drivers/net/phy/micrel.c|net/socket.c|include/uapi/drm/Kbuild|include/uapi/linux/Kbuild|include/asm-generic/vmlinux.lds.h|include/linux/thread_info.h)
+                Makefile|net/ipv6/ip6_tunnel.c|include/linux/siphash.h|drivers/nvmem/core.c|drivers/block/loop.c|kernel/cpu.c|drivers/of/Kconfig|drivers/net/phy/micrel.c|net/socket.c|include/uapi/drm/Kbuild|include/uapi/linux/Kbuild|include/asm-generic/vmlinux.lds.h|include/linux/thread_info.h|arch/arm64/mm/proc.S)
                   # 保留双方内容(删除冲突标记行) - 双方各加不同代码行
                   sed -i '/^<<<<<<</d; /^=======$/d; /^>>>>>>>/d' "$f"
                   git add "$f"
