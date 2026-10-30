@@ -139,7 +139,7 @@ jobs:
                   git rm -f "$f" 2>/dev/null || true
                   echo "  → include/linux/fscrypto.h 删除(CAF 不用)"
                   ;;
-                sound/usb/mixer.c|arch/arm/mm/init.c|scripts/mod/modpost.c|arch/arm64/kernel/psci.c|drivers/usb/host/xhci-mem.c|scripts/dtc/*|fs/userfaultfd.c|drivers/usb/host/xhci-plat.c|scripts/Kbuild.include|fs/eventpoll.c|net/ipv6/datagram.c|mm/page-writeback.c|drivers/md/dm-table.c|drivers/mmc/core/mmc.c|arch/arm64/include/asm/futex.h|drivers/mmc/core/core.c|drivers/usb/core/hub.c|sound/usb/card.c|fs/fs-writeback.c|security/selinux/avc.c|fs/gfs2/acl.c|drivers/staging/android/ion/ion_system_heap.c|kernel/exit.c|arch/arm/Makefile)
+                sound/usb/mixer.c|arch/arm/mm/init.c|scripts/mod/modpost.c|arch/arm64/kernel/psci.c|drivers/usb/host/xhci-mem.c|scripts/dtc/*|fs/userfaultfd.c|drivers/usb/host/xhci-plat.c|scripts/Kbuild.include|fs/eventpoll.c|net/ipv6/datagram.c|mm/page-writeback.c|drivers/md/dm-table.c|drivers/mmc/core/mmc.c|arch/arm64/include/asm/futex.h|drivers/mmc/core/core.c|drivers/usb/core/hub.c|sound/usb/card.c|fs/fs-writeback.c|security/selinux/avc.c|fs/gfs2/acl.c|drivers/staging/android/ion/ion_system_heap.c|kernel/exit.c|arch/arm/Makefile|drivers/media/dvb-core/dmxdev.c)
                   # 上游修复(USB音频/epoll loop check/page_alloc khugepaged), 通用框架代码非 CAF 定制
                   # 注: compress_offload.c 上游版删 snd_compress_free 但 compress_driver.h 仍引用 → 已移出到强制重置
                   git checkout --theirs "$f" 2>/dev/null || true
