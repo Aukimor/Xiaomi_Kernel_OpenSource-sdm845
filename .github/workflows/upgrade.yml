@@ -133,6 +133,12 @@ jobs:
                   git add "$f" 2>/dev/null || true
                   echo "  → arch/arm64/kernel/smp.c 保留 CAF(含 cpu_number 定义)"
                   ;;
+                include/linux/fscrypto.h)
+                  # CAF 用 fs/crypto/ 内部私有头, 不用上游的 include/linux/fscrypto.h;
+                  # CAF 侧无此文件, checkout --ours 会失败 → 直接删除
+                  git rm -f "$f" 2>/dev/null || true
+                  echo "  → include/linux/fscrypto.h 删除(CAF 不用)"
+                  ;;
                 sound/usb/mixer.c|arch/arm/mm/init.c|scripts/mod/modpost.c|arch/arm64/kernel/psci.c|drivers/usb/host/xhci-mem.c|scripts/dtc/*|fs/userfaultfd.c|drivers/usb/host/xhci-plat.c|scripts/Kbuild.include|fs/eventpoll.c|mm/page_alloc.c)
                   # 上游修复(USB音频/epoll loop check/page_alloc khugepaged), 通用框架代码非 CAF 定制
                   # 注: compress_offload.c 上游版删 snd_compress_free 但 compress_driver.h 仍引用 → 已移出到强制重置
@@ -230,7 +236,7 @@ jobs:
             git checkout 88-zstd -- "$dir" 2>/dev/null && echo "  ✅ $dir 已重置到 CAF" || echo "  ⚠️ $dir 重置失败"
           done
           # 单文件保护(跨文件依赖必须整体 CAF)
-          for f in drivers/hid/hid-core.c include/linux/overflow.h drivers/scsi/sd.c drivers/usb/gadget/composite.c arch/arm64/kernel/smp.c kernel/time/hrtimer.c drivers/usb/gadget/configfs.c drivers/usb/gadget/udc/core.c drivers/usb/host/xhci.c drivers/irqchip/irq-gic.c net/netlink/genetlink.c include/net/genetlink.h sound/core/compress_offload.c include/linux/fscrypto.h; do
+          for f in drivers/hid/hid-core.c include/linux/overflow.h drivers/scsi/sd.c drivers/usb/gadget/composite.c arch/arm64/kernel/smp.c kernel/time/hrtimer.c drivers/usb/gadget/configfs.c drivers/usb/gadget/udc/core.c drivers/usb/host/xhci.c drivers/irqchip/irq-gic.c net/netlink/genetlink.c include/net/genetlink.h sound/core/compress_offload.c; do
             git checkout 88-zstd -- "$f" 2>/dev/null && echo "  ✅ $f 已重置" || echo "  ⚠️ $f 重置失败"
           done
           # 给 CAF overflow.h 补 check_shl_overflow(上游新增,vmalloc 等自动合入的代码引用它)
