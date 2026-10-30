@@ -133,8 +133,9 @@ jobs:
                   git add "$f" 2>/dev/null || true
                   echo "  → arch/arm64/kernel/smp.c 保留 CAF(含 cpu_number 定义)"
                   ;;
-                sound/core/compress_offload.c|sound/usb/mixer.c|arch/arm/mm/init.c|scripts/mod/modpost.c|arch/arm64/kernel/psci.c|drivers/usb/host/xhci-mem.c|scripts/dtc/*|fs/userfaultfd.c|drivers/usb/host/xhci-plat.c|scripts/Kbuild.include|fs/eventpoll.c|mm/page_alloc.c)
-                  # 上游修复(状态机/USB音频), 通用框架代码非 CAF 定制
+                sound/usb/mixer.c|arch/arm/mm/init.c|scripts/mod/modpost.c|arch/arm64/kernel/psci.c|drivers/usb/host/xhci-mem.c|scripts/dtc/*|fs/userfaultfd.c|drivers/usb/host/xhci-plat.c|scripts/Kbuild.include|fs/eventpoll.c|mm/page_alloc.c)
+                  # 上游修复(USB音频/epoll loop check/page_alloc khugepaged), 通用框架代码非 CAF 定制
+                  # 注: compress_offload.c 上游版删 snd_compress_free 但 compress_driver.h 仍引用 → 已移出到强制重置
                   git checkout --theirs "$f" 2>/dev/null || true
                   # 外部AI C方案: theirs 后检查相对 CAF 基线删除的导出符号是否仍有引用方。
                   # 命中 = 定义侧断裂风险(theirs 删了定义, 引用方仍在)。
@@ -161,7 +162,7 @@ jobs:
                   git add "$f"
                   echo "  → msm_serial.c 保留 CAF 版"
                   ;;
-                kernel/sched/core.c|fs/f2fs/*|fs/ext4/*|drivers/pinctrl/qcom/*|drivers/thermal/thermal_core.c|drivers/tty/n_tty.c|drivers/usb/dwc3/*|drivers/input/touchscreen/atmel_mxt_ts.c|drivers/gpu/drm/drm_property.c|kernel/locking/spinlock_debug.c|arch/arm64/mm/mmu.c|net/wireless/util.c|drivers/md/dm.c|net/netfilter/xt_bpf.c|drivers/gpu/drm/msm/*|drivers/usb/gadget/function/f_fs.c|drivers/char/random.c|drivers/clk/qcom/*|include/uapi/linux/coresight-stm.h|drivers/scsi/ufs/*|drivers/of/base.c|sound/core/rawmidi.c|drivers/usb/gadget/function/f_uac2.c|drivers/hid/hid-core.c|include/linux/overflow.h|drivers/scsi/sd.c|drivers/usb/gadget/composite.c|kernel/time/hrtimer.c|drivers/usb/gadget/configfs.c|drivers/usb/gadget/udc/core.c|drivers/usb/host/xhci.c|drivers/irqchip/irq-gic.c|net/netlink/genetlink.c|include/net/genetlink.h|drivers/block/zram/*)
+                kernel/sched/core.c|fs/f2fs/*|fs/ext4/*|drivers/pinctrl/qcom/*|drivers/thermal/thermal_core.c|drivers/tty/n_tty.c|drivers/usb/dwc3/*|drivers/input/touchscreen/atmel_mxt_ts.c|drivers/gpu/drm/drm_property.c|kernel/locking/spinlock_debug.c|arch/arm64/mm/mmu.c|net/wireless/util.c|drivers/md/dm.c|net/netfilter/xt_bpf.c|drivers/gpu/drm/msm/*|drivers/usb/gadget/function/f_fs.c|drivers/char/random.c|drivers/clk/qcom/*|include/uapi/linux/coresight-stm.h|drivers/scsi/ufs/*|drivers/of/base.c|sound/core/rawmidi.c|drivers/usb/gadget/function/f_uac2.c|drivers/hid/hid-core.c|include/linux/overflow.h|drivers/scsi/sd.c|drivers/usb/gadget/composite.c|kernel/time/hrtimer.c|drivers/usb/gadget/configfs.c|drivers/usb/gadget/udc/core.c|drivers/usb/host/xhci.c|drivers/irqchip/irq-gic.c|net/netlink/genetlink.c|include/net/genetlink.h|drivers/block/zram/*|fs/crypto/*)
                   # 这些文件是 CAF 私有 API 的定义侧(hrtimer_quiesce_cpu/create_function_device/
                   # usb_gadget_func_wakeup/usb_gsi_ep_op/xhci_handshake_check_state 等),
                   # 整文件 theirs 会在链接期切断全树调用链。上游修复暂不 backport(登记)。
@@ -225,11 +226,11 @@ jobs:
           # merge 规则只在冲突时生效,无冲突文件会被自动合入上游改动。
           # 对需要"整目录冻结"的子系统,merge 后强制重置到 CAF 基线。
           echo "=== 强制重置整目录 ours 的子系统 ==="
-          for dir in fs/ext4 fs/f2fs drivers/scsi/ufs kernel/sched drivers/block/zram; do
+          for dir in fs/ext4 fs/f2fs drivers/scsi/ufs kernel/sched drivers/block/zram fs/crypto; do
             git checkout 88-zstd -- "$dir" 2>/dev/null && echo "  ✅ $dir 已重置到 CAF" || echo "  ⚠️ $dir 重置失败"
           done
           # 单文件保护(跨文件依赖必须整体 CAF)
-          for f in drivers/hid/hid-core.c include/linux/overflow.h drivers/scsi/sd.c drivers/usb/gadget/composite.c arch/arm64/kernel/smp.c kernel/time/hrtimer.c drivers/usb/gadget/configfs.c drivers/usb/gadget/udc/core.c drivers/usb/host/xhci.c drivers/irqchip/irq-gic.c net/netlink/genetlink.c include/net/genetlink.h; do
+          for f in drivers/hid/hid-core.c include/linux/overflow.h drivers/scsi/sd.c drivers/usb/gadget/composite.c arch/arm64/kernel/smp.c kernel/time/hrtimer.c drivers/usb/gadget/configfs.c drivers/usb/gadget/udc/core.c drivers/usb/host/xhci.c drivers/irqchip/irq-gic.c net/netlink/genetlink.c include/net/genetlink.h sound/core/compress_offload.c; do
             git checkout 88-zstd -- "$f" 2>/dev/null && echo "  ✅ $f 已重置" || echo "  ⚠️ $f 重置失败"
           done
           # 给 CAF overflow.h 补 check_shl_overflow(上游新增,vmalloc 等自动合入的代码引用它)
