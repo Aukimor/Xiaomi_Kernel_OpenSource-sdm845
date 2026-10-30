@@ -239,7 +239,8 @@ jobs:
           # fork.c/exit.c 不在此列: 上游 285 把 exit_robust_list 等从 fork.c 搬到 futex.c,
           # 强制重置 CAF 老版 fork.c 会与新 sched.h/futex.c 断裂(task_numa_free 双参等)。
           # 已验证两版导出符号一致, 无 CAF 私有 API → 判 theirs 自洽。
-          for f in drivers/hid/hid-core.c include/linux/overflow.h drivers/scsi/sd.c drivers/usb/gadget/composite.c arch/arm64/kernel/smp.c kernel/time/hrtimer.c drivers/usb/gadget/configfs.c drivers/usb/gadget/udc/core.c drivers/usb/host/xhci.c drivers/irqchip/irq-gic.c net/netlink/genetlink.c include/net/genetlink.h sound/core/compress_offload.c mm/page_alloc.c mm/internal.h; do            git checkout 88-zstd -- "$f" 2>/dev/null && echo "  ✅ $f 已重置" || echo "  ⚠️ $f 重置失败"
+          for f in drivers/hid/hid-core.c include/linux/overflow.h drivers/scsi/sd.c drivers/usb/gadget/composite.c arch/arm64/kernel/smp.c kernel/time/hrtimer.c drivers/usb/gadget/configfs.c drivers/usb/gadget/udc/core.c drivers/usb/host/xhci.c drivers/irqchip/irq-gic.c net/netlink/genetlink.c include/net/genetlink.h sound/core/compress_offload.c mm/page_alloc.c mm/internal.h; do
+            git checkout 88-zstd -- "$f" 2>/dev/null && echo "  ✅ $f 已重置" || echo "  ⚠️ $f 重置失败"
           done
           # 给 CAF overflow.h 补 check_shl_overflow(上游新增,vmalloc 等自动合入的代码引用它)
           if ! grep -q "check_shl_overflow" include/linux/overflow.h 2>/dev/null; then
