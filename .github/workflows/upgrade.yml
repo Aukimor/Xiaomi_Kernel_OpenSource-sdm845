@@ -107,8 +107,14 @@ jobs:
               OK=$((OK+1))
               continue
             fi
-            # 有冲突: 看是哪些文件
+            # merge 失败但无冲突文件 = merge 本身没起来(如 dirty tree / 无关历史), 输出原因
             CONFLICT_FILES=$(git diff --name-only --diff-filter=U)
+            if [ -z "$CONFLICT_FILES" ]; then
+              echo "❌ $TAG merge 失败(无未合并文件, 原始输出):" | tee -a "$CONFLICT_LOG"
+              cat /tmp/merge.log | tee -a "$CONFLICT_LOG"
+              FAIL=$((FAIL+1))
+              break
+            fi
             echo "⚠️ $TAG 冲突: $CONFLICT_FILES"
             RESOLVED=1
             for f in $CONFLICT_FILES; do
