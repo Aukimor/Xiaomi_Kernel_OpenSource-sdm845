@@ -184,6 +184,7 @@ jobs:
                   rm -f "$f"
                   echo "  → $f 删除(上游新增, CAF 无此文件)"
                   ;;
+                kernel/sched/*|drivers/android/*)
                   # CAF binder 是 Google lockless 重构,比上游 stable 新,
                   # 换上游老版本 binder 会破坏 Android 用户空间
                   git checkout --ours "$f" 2>/dev/null || true
