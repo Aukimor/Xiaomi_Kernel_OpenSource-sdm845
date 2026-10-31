@@ -139,7 +139,7 @@ jobs:
                   git rm -f "$f" 2>/dev/null || true
                   echo "  → include/linux/fscrypto.h 删除(CAF 不用)"
                   ;;
-                sound/usb/mixer.c|arch/arm/mm/init.c|scripts/mod/modpost.c|arch/arm64/kernel/psci.c|drivers/usb/host/xhci-mem.c|scripts/dtc/*|fs/userfaultfd.c|drivers/usb/host/xhci-plat.c|scripts/Kbuild.include|fs/eventpoll.c|net/ipv6/datagram.c|mm/page-writeback.c|drivers/md/dm-table.c|drivers/mmc/core/mmc.c|arch/arm64/include/asm/futex.h|drivers/mmc/core/core.c|drivers/usb/core/hub.c|sound/usb/card.c|fs/fs-writeback.c|security/selinux/avc.c|fs/gfs2/acl.c|drivers/staging/android/ion/ion_system_heap.c|kernel/exit.c|arch/arm/Makefile|drivers/media/dvb-core/dmxdev.c|drivers/staging/android/ion/ion.c|drivers/staging/android/ion/ion-ioctl.c|drivers/staging/android/ion/ion_priv.h|drivers/staging/android/ion/ion.h|drivers/usb/gadget/function/rndis.c|drivers/usb/gadget/function/rndis.h|net/ipv6/ip6_output.c|include/linux/bpf.h|drivers/nfc/st21nfca/se.c|mm/memory.c|net/key/af_key.c|net/xfrm/xfrm_policy.c|net/xfrm/xfrm_user.c|include/net/xfrm.h|drivers/mmc/core/host.c)
+                sound/usb/mixer.c|arch/arm/mm/init.c|scripts/mod/modpost.c|arch/arm64/kernel/psci.c|drivers/usb/host/xhci-mem.c|scripts/dtc/*|fs/userfaultfd.c|drivers/usb/host/xhci-plat.c|scripts/Kbuild.include|fs/eventpoll.c|net/ipv6/datagram.c|mm/page-writeback.c|drivers/md/dm-table.c|drivers/mmc/core/mmc.c|arch/arm64/include/asm/futex.h|drivers/mmc/core/core.c|drivers/usb/core/hub.c|sound/usb/card.c|fs/fs-writeback.c|security/selinux/avc.c|fs/gfs2/acl.c|drivers/staging/android/ion/ion_system_heap.c|kernel/exit.c|arch/arm/Makefile|drivers/media/dvb-core/dmxdev.c|drivers/staging/android/ion/ion.c|drivers/staging/android/ion/ion-ioctl.c|drivers/staging/android/ion/ion_priv.h|drivers/staging/android/ion/ion.h|drivers/usb/gadget/function/rndis.c|drivers/usb/gadget/function/rndis.h|net/ipv6/ip6_output.c|include/linux/bpf.h|drivers/nfc/st21nfca/se.c|mm/memory.c|net/key/af_key.c|net/xfrm/xfrm_policy.c|net/xfrm/xfrm_user.c|include/net/xfrm.h|drivers/mmc/core/host.c|arch/arm64/include/asm/cputype.h|arch/arm64/kernel/cpufeature.c)
                   # 上游修复(USB音频/epoll loop check/page_alloc khugepaged), 通用框架代码非 CAF 定制
                   # 注: compress_offload.c 上游版删 snd_compress_free 但 compress_driver.h 仍引用 → 已移出到强制重置
                   git checkout --theirs "$f" 2>/dev/null || true
@@ -261,6 +261,16 @@ jobs:
           if ! grep -q "sysctl_sched_rr_timeslice" kernel/sched/core.c 2>/dev/null; then
             printf '\n/* upstream 4.9.230 symbol: sysctl.c references it; CAF rt scheduler uses RR_TIMESLICE instead */\nint sysctl_sched_rr_timeslice __read_mostly = 1000;\n' >> kernel/sched/core.c
             echo "  ✅ core.c 补 sysctl_sched_rr_timeslice"
+          fi
+          # 给 CAF mmzone.h 补丁区: 上游 4.9.311 给 build_all_zonelists 加了第三参数
+          # (bool hotplug_context), mmzone.h 自动合并成上游 3 参声明,
+          # 而 CAF page_alloc.c(定义) 和 init/main.c(调用) 都是 2 参 → 断裂。
+          # 实测上游 311 的 mm_init.c/memory_hotplug.c 均不调用此函数(调用方只有这两个文件),
+          # 故把声明改回 2 参最省事。未来若上游新增 3 参调用方, 编译验证会立刻暴露。
+          if grep -q "build_all_zonelists(pg_data_t \*pgdat, struct zone \*zone," include/linux/mmzone.h 2>/dev/null; then
+            sed -i 's/void build_all_zonelists(pg_data_t \*pgdat, struct zone \*zone,$/void build_all_zonelists(pg_data_t *pgdat, struct zone *zone);/' include/linux/mmzone.h
+            sed -i '/^			 bool hotplug_context);$/d' include/linux/mmzone.h
+            echo "  ✅ mmzone.h build_all_zonelists 改回 2 参"
           fi
           # 一致性检查
           grep -q "s_writepages_rwsem" fs/ext4/ext4.h 2>/dev/null && echo "  ❌ ext4.h 仍有 s_writepages_rwsem" || echo "  ✅ ext4.h 无 s_writepages_rwsem"
